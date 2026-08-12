@@ -1,0 +1,37 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+contract XUSD is ERC20 {
+    address public vault;
+
+    error XUSD__ZeroAddressVault();
+    error XUSD__OnlyVault();
+
+    constructor(address _vault) ERC20("XUSD", "xUSD") {
+        if (_vault == address(0)) {
+            revert XUSD__ZeroAddressVault();
+        }
+        vault = _vault;
+    }
+
+    modifier onlyVault() {
+        if (msg.sender != vault) {
+            revert XUSD__OnlyVault();
+        }
+        _;
+    }
+
+    function mint(address to, uint256 amount) external onlyVault {
+        _mint(to, amount);
+    }
+
+    function burn(address from, uint256 amount) external onlyVault {
+        _burn(from, amount);
+    }
+
+    function decimals() public pure override returns (uint8) {
+        return 18;
+    }
+}
