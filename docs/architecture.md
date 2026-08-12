@@ -259,7 +259,15 @@ This means the system is economically similar to a vault token or share model.
 
 ### Important interpretation
 
-The xUSD supply is not a count of stablecoins. It is the count of claim shares. The value per claim is determined by the exchange rate.
+The xUSD supply is not a count of stablecoins. It is the count of claim shares. The value per claim is determined by the current exchange rate.
+
+The exchange rate is a derived value, not a separate source of truth and not a persisted accounting field. The implementation should calculate the current exchange rate from the underlying accounting state:
+
+- totalAssets = vault-held collateral + strategy value
+- if xUSD totalSupply == 0, exchangeRate = 1e18
+- otherwise, exchangeRate = totalAssets × 1e18 / xUSD totalSupply
+
+This prevents stale or independently stored rate values from drifting away from the actual vault state.
 
 ---
 
@@ -291,6 +299,14 @@ Therefore, after a standard deposit:
 - totalAssets increases by the same amount
 
 This design simplifies the accounting model and keeps v1 behavior easy to reason about.
+
+### Important accounting rules
+
+- Strategy value must not double-count assets already held by the vault.
+- Moving assets between the vault and the strategy does not change totalAssets.
+- Minting xUSD must be backed by the protocol’s accounting state.
+- Redemption must not return more assets than the user’s proportional claim.
+- Yield increases totalAssets without increasing xUSD totalSupply.
 
 ---
 
@@ -361,19 +377,23 @@ The deposit flow is intentionally simple in v1.
 
 ### Process
 
-1. User approves mock USDC to the vault.
-2. User calls deposit with a stablecoin amount.
-3. Vault receives the USDC from the user.
-4. Vault immediately transfers the deposited collateral into the strategy.
-5. Vault computes the xUSD shares to mint using the current exchange rate.
-6. Vault calls xUSD mint for the user.
-7. User receives xUSD.
+1. The vault reads the current protocol accounting state before the new deposit is included.
+2. The vault computes the current exchange rate from the current totalAssets and xUSD totalSupply.
+3. The vault calculates the shares to mint using the current exchange rate before the user’s deposit is applied.
+4. The user approves mock USDC to the vault.
+5. The user calls deposit with a stablecoin amount.
+6. The vault receives the USDC from the user.
+7. The vault immediately transfers the deposited collateral into the strategy.
+8. The vault calls xUSD mint for the user using the already computed sharesToMint.
+9. The user receives xUSD.
+
+This ordering ensures that a user’s deposit is priced using the state immediately before their deposit, rather than allowing the deposit itself to affect the share price used to calculate the shares they receive.
 
 ### Deposit share calculation
 
 The vault rounds down the share amount.
 
-- sharesToMint = floor(amount × 1e18 / exchangeRate)
+- sharesToMint = floor(amount × 1e18 / currentExchangeRate)
 
 This is the agreed rounding rule for deposits.
 
@@ -391,7 +411,7 @@ After a deposit:
 - totalAssets increases by the deposited amount
 - xUSD totalSupply increases by the minted shares
 - strategy value increases by the deposited amount
-- exchangeRate is recalculated
+- the current exchange rate is recalculated from the updated totalAssets and totalSupply
 
 ---
 
@@ -537,9 +557,11 @@ The v1 protocol is intentionally minimal and has no governance.
 
 The protocol should always maintain the following invariants in v1.
 
-### 16.1 Asset accounting
+### 16.1 Primary accounting invariant
 
 - totalAssets = vault-held collateral + strategy value
+
+This is the primary accounting invariant and the canonical definition of the vault’s backing.
 
 ### 16.2 Exchange-rate rule
 
@@ -548,19 +570,22 @@ The protocol should always maintain the following invariants in v1.
 - if xUSD totalSupply == 0:
   - exchangeRate = 1e18
 
+The implementation must calculate the current exchange rate from the underlying state rather than relying on a stored independent value.
+
 ### 16.3 Supply consistency
 
 - xUSD totalSupply must equal the sum of all user balances
 
-### 16.4 Solvency
-
-- totalAssets must be sufficient to cover all claims represented by xUSD
-- in a valid state:
-  - xUSD totalSupply × exchangeRate / 1e18 <= totalAssets
-
-### 16.5 Claim value
+### 16.4 Backing and claim consistency
 
 - user xUSD balance × exchangeRate / 1e18 = that user’s proportional claim on the vault
+- redemption must not return more assets than the user’s proportional claim
+- minting xUSD must be backed by the protocol’s accounting state
+
+### 16.5 No double-counting
+
+- strategy value must not double-count assets already held by the vault
+- moving assets between the vault and the strategy does not change totalAssets
 
 ### 16.6 No unbacked minting
 
@@ -569,12 +594,20 @@ The protocol should always maintain the following invariants in v1.
 
 ### 16.7 Yield integrity
 
-- yield accrual increases totalAssets without changing xUSD totalSupply
+- yield accrual increases totalAssets without increasing xUSD totalSupply
 - the exchange rate rises accordingly
 
 ### 16.8 Zero-supply reset
 
 - after a full redemption, xUSD totalSupply is zero and exchangeRate resets to 1e18
+
+### 16.9 Secondary consistency check
+
+The following check may still be used as a consistency check, but it is not the primary solvency invariant because exchangeRate is derived from totalAssets and xUSD totalSupply:
+
+- xUSD totalSupply × exchangeRate / 1e18 <= totalAssets
+
+This is a useful sanity check, but not the core invariant to rely on for protocol solvency.
 
 ---
 
