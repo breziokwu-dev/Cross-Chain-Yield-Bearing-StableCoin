@@ -5,20 +5,27 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract XUSD is ERC20 {
     address public vault;
-
+    address public immutable deployer;
+    
+    error XUSD__OnlyDeployer();
     error XUSD__ZeroAddressVault();
     error XUSD__OnlyVault();
+    error XUSD__VaultAlreadySet();
 
-    constructor(address _vault) ERC20("XUSD", "xUSD") {
-        if (_vault == address(0)) {
-            revert XUSD__ZeroAddressVault();
-        }
-        vault = _vault;
+    constructor() ERC20("XUSD", "xUSD") {
+        deployer = msg.sender;
     }
 
     modifier onlyVault() {
         if (msg.sender != vault) {
             revert XUSD__OnlyVault();
+        }
+        _;
+    }
+
+    modifier onlyDeployer() {
+        if (msg.sender != deployer) {
+            revert XUSD__OnlyDeployer();
         }
         _;
     }
@@ -33,5 +40,17 @@ contract XUSD is ERC20 {
 
     function decimals() public pure override returns (uint8) {
         return 18;
+    }
+
+    function setVault(address _vault) external onlyDeployer {
+        if (_vault == address(0)) {
+            revert XUSD__ZeroAddressVault();
+        }
+
+        if (vault != address(0)) {
+            revert XUSD__VaultAlreadySet();
+        }
+
+        vault = _vault;
     }
 }
