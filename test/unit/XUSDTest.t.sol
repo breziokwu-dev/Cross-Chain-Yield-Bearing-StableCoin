@@ -6,120 +6,222 @@ import {Test} from "forge-std/Test.sol";
 import {XUSD} from "../../src/XUSD.sol";
 
 contract XUSDTest is Test {
-    address internal constant VAULT = address(0xBEEF);
-    XUSD internal xusd;
+    XUSD xusd;
+
+    address deployer = makeAddr("deployer");
+    address user = makeAddr("user");
+    address vault = makeAddr("vault");
+    address attacker = makeAddr("attacker");
+
+    uint256 constant MINT_AMOUNT = 1000 ether;
 
     function setUp() public {
+        vm.prank(deployer);
         xusd = new XUSD();
     }
 
-    function test_VaultAddressIsSet() public view {
-        assertEq(xusd.vault(), VAULT);
-    }
+    // ---------------------------------------------------------------
+    // Initial State
+    // ---------------------------------------------------------------
 
-    function test_OnlyVaultCanMint() public {
-        vm.prank(VAULT);
-        xusd.mint(address(0x123), 1 ether);
-
-        assertEq(xusd.balanceOf(address(0x123)), 1 ether);
-    }
-
-    function test_UnauthorizedMint() public {
-        vm.expectRevert(XUSD.XUSD__OnlyVault.selector);
-        vm.prank(address(0x123));
-        xusd.mint(address(0x456), 1 ether);
-    }
-
-    function test_OnlyVaultCanBurn() public {
-        vm.prank(VAULT);
-        xusd.mint(address(0x123), 1 ether);
-
-        vm.prank(VAULT);
-        xusd.burn(address(0x123), 1 ether);
-
-        assertEq(xusd.balanceOf(address(0x123)), 0);
-    }
-
-    function test_UnauthorizedBurn() public {
-        vm.expectRevert(XUSD.XUSD__OnlyVault.selector);
-        vm.prank(address(0x123));
-        xusd.burn(address(0x456), 1 ether);
-    }
-
-    function test_DecimalsAreEighteen() public view {
+    function test_InitialState() public view {
+        assertEq(xusd.deployer(), deployer);
+        assertEq(xusd.vault(), address(0));
+        assertEq(xusd.totalSupply(), 0);
+        assertEq(xusd.balanceOf(user), 0);
         assertEq(xusd.decimals(), 18);
     }
 
-    function test_ZeroAddressVaultReverts() public {
-        //vm.expectRevert(XUSD.XUSD__ZeroAddressVault.selector);
-       // new XUSD();
+    // ---------------------------------------------------------------
+    // setVault()
+    // ---------------------------------------------------------------
+
+    function test_SetVault_DeployerCanSetVault() public {
+        vm.prank(deployer);
+        xusd.setVault(vault);
+
+        assertEq(xusd.vault(), vault);
     }
 
-    function test_MintIncreasesTotalSupply() public {
-        uint256 amount = 1 ether;
+    function test_SetVault_RevertsIfZeroAddress() public {
+        vm.prank(deployer);
 
-        vm.prank(VAULT);
-        xusd.mint(address(0x123), amount);
-
-        assertEq(xusd.totalSupply(), amount);
+        vm.expectRevert(XUSD.XUSD__ZeroAddressVault.selector);
+        xusd.setVault(address(0));
     }
 
-    function test_BurnDecreasesTotalSupply() public {
-        uint256 amount = 1 ether;
+    function test_SetVault_RevertsIfNotDeployer() public {
+        vm.prank(attacker);
 
-        vm.prank(VAULT);
-        xusd.mint(address(0x123), amount);
+        vm.expectRevert(XUSD.XUSD__OnlyDeployer.selector);
+        xusd.setVault(vault);
+    }
 
-        vm.prank(VAULT);
-        xusd.burn(address(0x123), amount);
+    function test_SetVault_RevertsIfVaultAlreadySet() public {
+        vm.startPrank(deployer);
 
+        xusd.setVault(vault);
+
+        vm.expectRevert(XUSD.XUSD__VaultAlreadySet.selector);
+        xusd.setVault(address(123));
+
+        vm.stopPrank();
+
+        assertEq(xusd.vault(), vault);
+    }
+
+    // ---------------------------------------------------------------
+    // mint()
+    // ---------------------------------------------------------------
+
+    function test_Mint_RevertsIfCallerIsNotVault() public {
+        _setVault();
+
+        vm.prank(attacker);
+
+        vm.expectRevert(XUSD.XUSD__OnlyVault.selector);
+        xusd.mint(user, MINT_AMOUNT);
+    }
+
+    function test_Mint_VaultCanMint() public {
+        _setVault();
+
+        vm.prank(vault);
+        xusd.mint(user, MINT_AMOUNT);
+
+        assertEq(xusd.balanceOf(user), MINT_AMOUNT);
+        assertEq(xusd.totalSupply(), MINT_AMOUNT);
+    }
+
+    function test_Mint_UpdatesTotalSupplyAndBalance() public {
+        _setVault();
+
+        uint256 firstMint = 100 ether;
+        uint256 secondMint = 250 ether;
+
+        vm.startPrank(vault);
+
+        xusd.mint(user, firstMint);
+        xusd.mint(user, secondMint);
+
+        vm.stopPrank();
+
+        assertEq(xusd.balanceOf(user), firstMint + secondMint);
+        assertEq(xusd.totalSupply(), firstMint + secondMint);
+    }
+
+    function test_Mint_ToDifferentUsers() public {
+        _setVault();
+
+        address userTwo = makeAddr("userTwo");
+
+        vm.startPrank(vault);
+
+        xusd.mint(user, 100 ether);
+        xusd.mint(userTwo, 200 ether);
+
+        vm.stopPrank();
+
+        assertEq(xusd.balanceOf(user), 100 ether);
+        assertEq(xusd.balanceOf(userTwo), 200 ether);
+        assertEq(xusd.totalSupply(), 300 ether);
+    }
+
+    // ---------------------------------------------------------------
+    // burn()
+    // ---------------------------------------------------------------
+
+    function test_Burn_RevertsIfCallerIsNotVault() public {
+        _setVault();
+        _mintToUser(MINT_AMOUNT);
+
+        vm.prank(attacker);
+
+        vm.expectRevert(XUSD.XUSD__OnlyVault.selector);
+        xusd.burn(user, 100 ether);
+    }
+
+    function test_Burn_VaultCanBurn() public {
+        _setVault();
+        _mintToUser(MINT_AMOUNT);
+
+        uint256 burnAmount = 400 ether;
+
+        vm.prank(vault);
+        xusd.burn(user, burnAmount);
+
+        assertEq(xusd.balanceOf(user), MINT_AMOUNT - burnAmount);
+        assertEq(xusd.totalSupply(), MINT_AMOUNT - burnAmount);
+    }
+
+    function test_Burn_AllTokens() public {
+        _setVault();
+        _mintToUser(MINT_AMOUNT);
+
+        vm.prank(vault);
+        xusd.burn(user, MINT_AMOUNT);
+
+        assertEq(xusd.balanceOf(user), 0);
         assertEq(xusd.totalSupply(), 0);
     }
 
-    function test_TransferWorks() public {
-        uint256 amount = 1 ether;
+    function test_Burn_RevertsIfUserHasInsufficientBalance() public {
+        _setVault();
+        _mintToUser(100 ether);
 
-        vm.prank(VAULT);
-        xusd.mint(address(0x123), amount);
+        vm.prank(vault);
 
-        vm.prank(address(0x123));
-        bool success = xusd.transfer(address(0x456), amount);
-
-        assertTrue(success);
-        assertEq(xusd.balanceOf(address(0x123)), 0);
-        assertEq(xusd.balanceOf(address(0x456)), amount);
+        vm.expectRevert();
+        xusd.burn(user, 101 ether);
     }
 
-    function test_ApproveAndTransferFromWorks() public {
-        uint256 amount = 1 ether;
+    // ---------------------------------------------------------------
+    // Standard ERC20 behavior
+    // ---------------------------------------------------------------
 
-        vm.prank(VAULT);
-        xusd.mint(address(0x123), amount);
+    function test_Transfer_WorksNormally() public {
+        _setVault();
+        _mintToUser(MINT_AMOUNT);
 
-        vm.prank(address(0x123));
-        xusd.approve(address(0x456), amount);
+        uint256 transferAmount = 300 ether;
 
-        vm.prank(address(0x456));
-        bool success = xusd.transferFrom(address(0x123), address(0x789), amount);
+        vm.prank(user);
+        xusd.transfer(attacker, transferAmount);
 
-        assertTrue(success);
-        assertEq(xusd.balanceOf(address(0x123)), 0);
-        assertEq(xusd.balanceOf(address(0x789)), amount);
-        assertEq(xusd.allowance(address(0x123), address(0x456)), 0);
+        assertEq(xusd.balanceOf(user), MINT_AMOUNT - transferAmount);
+        assertEq(xusd.balanceOf(attacker), transferAmount);
     }
 
-    function test_TransferFromDecreasesAllowance() public {
-        uint256 amount = 1 ether;
+    function test_ApproveAndTransferFrom_WorkNormally() public {
+        _setVault();
+        _mintToUser(MINT_AMOUNT);
 
-        vm.prank(VAULT);
-        xusd.mint(address(0x123), amount);
+        uint256 amount = 500 ether;
 
-        vm.prank(address(0x123));
-        xusd.approve(address(0x456), amount);
+        vm.prank(user);
+        xusd.approve(attacker, amount);
 
-        vm.prank(address(0x456));
-        xusd.transferFrom(address(0x123), address(0x789), 0.5 ether);
+        assertEq(xusd.allowance(user, attacker), amount);
 
-        assertEq(xusd.allowance(address(0x123), address(0x456)), 0.5 ether);
+        vm.prank(attacker);
+        xusd.transferFrom(user, attacker, amount);
+
+        assertEq(xusd.balanceOf(user), MINT_AMOUNT - amount);
+        assertEq(xusd.balanceOf(attacker), amount);
+        assertEq(xusd.allowance(user, attacker), 0);
+    }
+
+    // ---------------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------------
+
+    function _setVault() internal {
+        vm.prank(deployer);
+        xusd.setVault(vault);
+    }
+
+    function _mintToUser(uint256 amount) internal {
+        vm.prank(vault);
+        xusd.mint(user, amount);
     }
 }
