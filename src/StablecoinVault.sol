@@ -50,4 +50,16 @@ contract StablecoinVault {
         vaultCollateralBalance += amount;
         emit Deposit(msg.sender, amount);
     }
+
+    function getCollateralBalance(address user) external view returns (uint256) {
+        return collateralBalance[user];
+    }
+
+    function getMockUSDCAddress() external view returns (address) {
+        return address(mockUSDC);
+    }
+
+    function getXUSDAddress() external view returns (address) {
+        return address(xusd);
+    }
 }
