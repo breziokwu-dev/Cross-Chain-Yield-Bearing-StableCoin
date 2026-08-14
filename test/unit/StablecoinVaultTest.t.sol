@@ -251,9 +251,7 @@ contract StablecoinVaultTest is Test {
         mockUSDC.approve(address(vault), 100e6);
         vault.deposit(100e6);
 
-        vm.expectRevert(
-            StablecoinVault.SV__InsufficientCollateral.selector
-        );
+        vm.expectRevert(StablecoinVault.SV__InsufficientCollateral.selector);
 
         vault.withdraw(101e6);
 
@@ -309,9 +307,7 @@ contract StablecoinVaultTest is Test {
     function test_MintXUSD_RevertsIfNoCollateral() public {
         vm.startPrank(user);
 
-        vm.expectRevert(
-            StablecoinVault.SV__InsufficientCollateral.selector
-        );
+        vm.expectRevert(StablecoinVault.SV__InsufficientCollateral.selector);
 
         vault.mintXUSD(50e6);
 
@@ -360,9 +356,7 @@ contract StablecoinVaultTest is Test {
 
         vault.mintXUSD(50e6);
 
-        vm.expectRevert(
-            StablecoinVault.SV__InsufficientCollateral.selector
-        );
+        vm.expectRevert(StablecoinVault.SV__InsufficientCollateral.selector);
 
         vault.mintXUSD(60e6);
 
@@ -379,5 +373,186 @@ contract StablecoinVaultTest is Test {
         vm.stopPrank();
 
         assertEq(xusd.balanceOf(user), 100e6);
+    }
+
+    function test_BurnXUSD() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vault.mintXUSD(50e6);
+        vault.burnXUSD(20e6);
+
+        vm.stopPrank();
+
+        assertEq(xusd.balanceOf(user), 30e6);
+    }
+
+    function test_BurnXUSD_BurnAllMintedXUSD() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(50e6);
+        vault.burnXUSD(50e6);
+        vm.stopPrank();
+        assertEq(xusd.balanceOf(user), 0);
+    }
+
+    function test_BurnXUSD_CannotBurnMoreThanMinted() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(50e6);
+
+        vm.expectRevert(StablecoinVault.SV__InsufficientXUSDMinted.selector);
+
+        vault.burnXUSD(60e6);
+
+        vm.stopPrank();
+    }
+
+    function test_BurnXUSD_EmitsBurnedEvent() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(50e6);
+
+        vm.expectEmit(true, true, false, true);
+        emit StablecoinVault.Burned(user, 20e6);
+
+        vault.burnXUSD(20e6);
+        vm.stopPrank();
+    }
+
+    function test_BurnXUSD_RevertsIfZeroAmount() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(50e6);
+
+        vm.expectRevert(StablecoinVault.SV__MustBeMoreThanZero.selector);
+        vault.burnXUSD(0);
+
+        vm.stopPrank();
+    }
+
+    function test_BurnXUSD_MultipleBurnsAccumulate() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(50e6);
+
+        vault.burnXUSD(20e6);
+        vault.burnXUSD(10e6);
+
+        vm.stopPrank();
+
+        assertEq(xusd.balanceOf(user), 20e6);
+    }
+
+    function test_BurnXUSD_MultipleBurnsAccumulateFromMultipleUsers() public {
+        address user2 = makeAddr("user2");
+
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vault.mintXUSD(50e6);
+        vault.burnXUSD(20e6);
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+        mockUSDC.mint(user2, 500e6);
+        mockUSDC.approve(address(vault), 200e6);
+        vault.deposit(200e6);
+
+        vault.mintXUSD(100e6);
+        vault.burnXUSD(30e6);
+        vm.stopPrank();
+
+        assertEq(xusd.balanceOf(user), 30e6);
+        assertEq(xusd.balanceOf(user2), 70e6);
+    }
+
+    function test_BurnXUSD_RevertsIfExceedingMintedAfterMultipleBurns() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vault.mintXUSD(50e6);
+        vault.burnXUSD(20e6);
+
+        vm.expectRevert(StablecoinVault.SV__InsufficientXUSDMinted.selector);
+
+        vault.burnXUSD(40e6);
+
+        vm.stopPrank();
+    }
+
+    function test_Withdraw_CanOnlyWithdrawAvailableCollateral() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vault.mintXUSD(80e6);
+
+        vm.expectRevert(StablecoinVault.SV__InsufficientCollateral.selector);
+
+        vault.withdraw(30e6);
+
+        vm.stopPrank();
+    }
+
+    function test_Withdraw_CanWithdrawAfterBurningXUSD() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vault.mintXUSD(80e6);
+        vault.burnXUSD(30e6);
+
+        vault.withdraw(30e6);
+
+        vm.stopPrank();
+
+        assertEq(vault.totalAssets(), 70e6);
+        assertEq(strategy.totalValue(), 70e6);
+        assertEq(vault.getCollateralBalance(user), 70e6);
+        assertEq(mockUSDC.balanceOf(address(strategy)), 70e6);
+        assertEq(mockUSDC.balanceOf(user), 930e6);
+    }
+
+    function test_Withdraw_CanWithdrawAllAfterBurningXUSD() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vault.mintXUSD(80e6);
+        vault.burnXUSD(80e6);
+
+        vault.withdraw(100e6);
+
+        vm.stopPrank();
+
+        assertEq(vault.totalAssets(), 0);
+        assertEq(strategy.totalValue(), 0);
+        assertEq(vault.getCollateralBalance(user), 0);
+        assertEq(mockUSDC.balanceOf(address(strategy)), 0);
+        assertEq(mockUSDC.balanceOf(user), 1000e6);
+    }
+
+    function test_Withdraw_CannotWithdrawMoreThanCollateralAfterBurningXUSD() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vault.mintXUSD(80e6);
+        vault.burnXUSD(30e6);
+
+        vm.expectRevert(StablecoinVault.SV__InsufficientCollateral.selector);
+
+        vault.withdraw(80e6);
+
+        vm.stopPrank();
     }
 }

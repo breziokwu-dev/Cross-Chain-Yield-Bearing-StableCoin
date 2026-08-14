@@ -26,10 +26,12 @@ contract StablecoinVault {
     error SV__InsufficientCollateral();
     error SV__ZeroAddressStrategy();
     error SV__StrategyAlreadySet();
+    error SV__InsufficientXUSDMinted();
 
     event Deposit(address sender, uint256 amount);
     event Withdraw(address sender, uint256 amount);
     event Minted(address sender, uint256 amount);
+    event Burned(address sender, uint256 amount);
 
     constructor(address _mockUSDC, address _xusd) {
         if (_mockUSDC == address(0)) {
@@ -80,6 +82,9 @@ contract StablecoinVault {
         if (collateralBalance[msg.sender] < amount) {
             revert SV__InsufficientCollateral();
         }
+        if (xusdMinted[msg.sender] + amount > collateralBalance[msg.sender]) {
+            revert SV__InsufficientCollateral();
+        }
         strategy.withdraw(amount);
         bool transfered = mockUSDC.transfer(msg.sender, amount);
         if (!transfered) {
@@ -92,13 +97,23 @@ contract StablecoinVault {
     }
 
     function mintXUSD(uint256 amount) external moreThanZero(amount) {
-        if(xusdMinted[msg.sender] + amount > collateralBalance[msg.sender]) {
+        if (xusdMinted[msg.sender] + amount > collateralBalance[msg.sender]) {
             revert SV__InsufficientCollateral();
         }
         xusdMinted[msg.sender] += amount;
         vaultMintedUSDC += amount;
         xusd.mint(msg.sender, amount);
         emit Minted(msg.sender, amount);
+    }
+
+    function burnXUSD(uint256 amount) external moreThanZero(amount) {
+        if (xusdMinted[msg.sender] < amount) {
+            revert SV__InsufficientXUSDMinted();
+        }
+        xusd.burn(msg.sender, amount);
+        xusdMinted[msg.sender] -= amount;
+        vaultMintedUSDC -= amount;
+        emit Burned(msg.sender, amount);
     }
 
     function setStrategy(address _strategy) external onlyDeployer {
