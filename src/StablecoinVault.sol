@@ -19,11 +19,14 @@ contract StablecoinVault {
     error SV__TransferNotSuccessful();
     error SV__ZeroAddressMockUSDC();
     error SV__ZeroAddressXUSD();
-    error SV__ZeroAddressStrategy();
     error SV__OnlyDeployer();
+    error SV__NoCollateralDeposited();
+    error SV__InsufficientCollateral();
+    error SV__ZeroAddressStrategy();
     error SV__StrategyAlreadySet();
 
     event Deposit(address sender, uint256 amount);
+    event Withdraw(address sender, uint256 amount);
 
     constructor(address _mockUSDC, address _xusd) {
         if (_mockUSDC == address(0)) {
@@ -38,10 +41,10 @@ contract StablecoinVault {
     }
 
     modifier moreThanZero(uint256 amount) {
-        if(amount == 0){
+        if (amount == 0) {
             revert SV__MustBeMoreThanZero();
         }
-        _;        
+        _;
     }
 
     modifier onlyDeployer() {
@@ -51,13 +54,13 @@ contract StablecoinVault {
         _;
     }
 
-    function totalAssets() public view returns(uint256) {
+    function totalAssets() public view returns (uint256) {
         return strategy.totalValue();
     }
 
     function deposit(uint256 amount) external moreThanZero(amount) {
         bool transfered = mockUSDC.transferFrom(msg.sender, address(this), amount);
-        if(!transfered){
+        if (!transfered) {
             revert SV__TransferNotSuccessful();
         }
         collateralBalance[msg.sender] += amount;
@@ -65,6 +68,24 @@ contract StablecoinVault {
         mockUSDC.approve(address(strategy), amount);
         strategy.deposit(amount);
         emit Deposit(msg.sender, amount);
+    }
+
+    function withdraw(uint256 amount) external moreThanZero(amount) {
+        if (collateralBalance[msg.sender] == 0) {
+            revert SV__NoCollateralDeposited();
+        }
+        if (collateralBalance[msg.sender] < amount) {
+            revert SV__InsufficientCollateral();
+        }
+        strategy.withdraw(amount);
+        bool transfered = mockUSDC.transfer(msg.sender, amount);
+        if (!transfered) {
+            revert SV__TransferNotSuccessful();
+        }
+        collateralBalance[msg.sender] -= amount;
+        vaultCollateralBalance -= amount;
+
+        emit Withdraw(msg.sender, amount);
     }
 
     function setStrategy(address _strategy) external onlyDeployer {

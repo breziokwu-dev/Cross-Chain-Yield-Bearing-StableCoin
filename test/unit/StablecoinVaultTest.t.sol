@@ -20,15 +20,9 @@ contract StablecoinVaultTest is Test {
         mockUSDC = new MockUSDC();
         xusd = new XUSD();
 
-        vault = new StablecoinVault(
-            address(mockUSDC),
-            address(xusd)
-        );
+        vault = new StablecoinVault(address(mockUSDC), address(xusd));
 
-        strategy = new SimpleYieldStrategy(
-            address(mockUSDC),
-            address(vault)
-        );
+        strategy = new SimpleYieldStrategy(address(mockUSDC), address(vault));
 
         vault.setStrategy(address(strategy));
 
@@ -43,35 +37,21 @@ contract StablecoinVaultTest is Test {
     }
 
     function test_SetStrategy() public view {
-        assertEq(
-            vault.getStrategyAddress(),
-            address(strategy)
-        );
+        assertEq(vault.getStrategyAddress(), address(strategy));
     }
 
     function test_SetStrategy_RevertsIfZeroAddress() public {
-        StablecoinVault newVault = new StablecoinVault(
-            address(mockUSDC),
-            address(xusd)
-        );
+        StablecoinVault newVault = new StablecoinVault(address(mockUSDC), address(xusd));
 
-        vm.expectRevert(
-            StablecoinVault.SV__ZeroAddressStrategy.selector
-        );
+        vm.expectRevert(StablecoinVault.SV__ZeroAddressStrategy.selector);
 
         newVault.setStrategy(address(0));
     }
 
     function test_SetStrategy_RevertsIfAlreadySet() public {
-        SimpleYieldStrategy anotherStrategy =
-            new SimpleYieldStrategy(
-                address(mockUSDC),
-                address(vault)
-            );
+        SimpleYieldStrategy anotherStrategy = new SimpleYieldStrategy(address(mockUSDC), address(vault));
 
-        vm.expectRevert(
-            StablecoinVault.SV__StrategyAlreadySet.selector
-        );
+        vm.expectRevert(StablecoinVault.SV__StrategyAlreadySet.selector);
 
         vault.setStrategy(address(anotherStrategy));
     }
@@ -81,9 +61,7 @@ contract StablecoinVaultTest is Test {
 
         vm.prank(attacker);
 
-        vm.expectRevert(
-            StablecoinVault.SV__OnlyDeployer.selector
-        );
+        vm.expectRevert(StablecoinVault.SV__OnlyDeployer.selector);
 
         vault.setStrategy(address(strategy));
     }
@@ -179,6 +157,106 @@ contract StablecoinVaultTest is Test {
         emit StablecoinVault.Deposit(user, 100e6);
 
         vault.deposit(100e6);
+        vm.stopPrank();
+    }
+
+    function test_Withdraw() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.withdraw(50e6);
+        vm.stopPrank();
+
+        assertEq(vault.totalAssets(), 50e6);
+        assertEq(strategy.totalValue(), 50e6);
+        assertEq(vault.getCollateralBalance(user), 50e6);
+        assertEq(mockUSDC.balanceOf(address(strategy)), 50e6);
+        assertEq(mockUSDC.balanceOf(user), 950e6);
+    }
+
+    function test_Withdraw_RevertsIfZeroAmount() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vm.expectRevert(StablecoinVault.SV__MustBeMoreThanZero.selector);
+        vault.withdraw(0);
+
+        vm.stopPrank();
+    }
+
+    function test_Withdraw_InsufficientCollateralReverts() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vm.expectRevert(StablecoinVault.SV__InsufficientCollateral.selector);
+        vault.withdraw(200e6);
+
+        vm.stopPrank();
+    }
+
+    function test_Withdraw_EmitsWithdrawEvent() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vm.expectEmit(true, true, false, true);
+        emit StablecoinVault.Withdraw(user, 50e6);
+
+        vault.withdraw(50e6);
+        vm.stopPrank();
+    }
+
+    function test_Withdraw_MultipleWithdrawalsAccumulate() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 300e6);
+
+        vault.deposit(300e6);
+        vault.withdraw(100e6);
+        vault.withdraw(50e6);
+
+        vm.stopPrank();
+
+        assertEq(vault.totalAssets(), 150e6);
+        assertEq(vault.getCollateralBalance(user), 150e6);
+        assertEq(mockUSDC.balanceOf(address(strategy)), 150e6);
+        assertEq(strategy.totalValue(), 150e6);
+    }
+
+    function test_Withdraw_MultipleWithdrawalsAccumulateFromMultipleUsers() public {
+        address user2 = makeAddr("user2");
+
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.withdraw(50e6);
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+        mockUSDC.mint(user2, 500e6);
+        mockUSDC.approve(address(vault), 200e6);
+        vault.deposit(200e6);
+        vault.withdraw(100e6);
+        vm.stopPrank();
+
+        assertEq(vault.totalAssets(), 150e6);
+        assertEq(vault.getCollateralBalance(user), 50e6);
+        assertEq(vault.getCollateralBalance(user2), 100e6);
+    }
+
+    function test_Withdraw_RevertsIfStrategyCannotWithdraw() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vm.expectRevert(
+            StablecoinVault.SV__InsufficientCollateral.selector
+        );
+
+        vault.withdraw(101e6);
+
         vm.stopPrank();
     }
 }

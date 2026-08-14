@@ -39,7 +39,7 @@ contract SimpleYieldStrategy {
 
     modifier onlyVault() {
         if (msg.sender != vault) {
-            revert SYS__OnlyVault(); 
+            revert SYS__OnlyVault();
         }
         _;
     }
@@ -49,10 +49,10 @@ contract SimpleYieldStrategy {
     }
 
     function deposit(uint256 amount) external onlyVault {
-        if(amount == 0) {
+        if (amount == 0) {
             revert SYS__ZeroAmount();
         }
-        if(!live) {
+        if (!live) {
             revert SYS__NotLive();
         }
         bool transferred = mockUSDC.transferFrom(vault, address(this), amount);
@@ -64,13 +64,13 @@ contract SimpleYieldStrategy {
     }
 
     function withdraw(uint256 amount) external onlyVault {
-        if(amount == 0) {
+        if (amount == 0) {
             revert SYS__ZeroAmount();
         }
-        if(amount > depositedValue) {
+        if (amount > depositedValue) {
             revert SYS__GreaterThanDepositedValue();
         }
-        if(!live) {
+        if (!live) {
             revert SYS__NotLive();
         }
         bool withdrawn = mockUSDC.transfer(vault, amount);
@@ -82,10 +82,10 @@ contract SimpleYieldStrategy {
     }
 
     function simulateYield(uint256 amount) external onlyVault {
-        if(amount == 0) {
+        if (amount == 0) {
             revert SYS__ZeroAmount();
         }
-        if(!live) {
+        if (!live) {
             revert SYS__NotLive();
         }
         accruedYield += amount;
