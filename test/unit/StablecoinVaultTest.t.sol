@@ -93,4 +93,34 @@ contract StablecoinVaultTest is Test {
         assertEq(vault.getCollateralBalance(user), 300e6);
         assertEq(mockUSDC.balanceOf(address(vault)), 300e6);
     }
+
+    function test_Deposit_MultipleDepositsAccumulateFromMultipleUsers() public {
+        address user2 = makeAddr("user2");
+
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+        mockUSDC.mint(user2, 500e6);
+        mockUSDC.approve(address(vault), 200e6);
+        vault.deposit(200e6);
+        vm.stopPrank();
+
+        assertEq(vault.totalAssets(), 300e6);
+        assertEq(vault.getCollateralBalance(user), 100e6);
+        assertEq(vault.getCollateralBalance(user2), 200e6);
+    }
+
+    function test_Deposit_EmitsDepositEvent() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+
+        vm.expectEmit(true, true, false, true);
+        emit StablecoinVault.Deposit(user, 100e6);
+
+        vault.deposit(100e6);
+        vm.stopPrank();
+    }
 }
