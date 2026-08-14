@@ -16,10 +16,13 @@ contract SimpleYieldStrategy {
     error SYS__OnlyVault();
     error SYS__ZeroAddressVault();
     error SYS__TransferNotSuccessful();
+    error SYS__GreaterThanDepositedValue();
+    error SYS__WithdrawNotSuccessful();
 
     bool internal live;
 
     event Deposit(uint256 amount, uint256 depositedValue);
+    event Withdraw(uint256 amount, uint256 depositedValue);
 
     constructor(address _mockUSDC, address _vault) {
         if (_mockUSDC == address(0)) {
@@ -44,7 +47,7 @@ contract SimpleYieldStrategy {
         return depositedValue + accruedYield;
     }
 
-    function deposit(uint256 amount) public onlyVault {
+    function deposit(uint256 amount) external onlyVault {
         if(amount == 0) {
             revert SYS__ZeroAmount();
         }
@@ -57,6 +60,24 @@ contract SimpleYieldStrategy {
         }
         depositedValue += amount;
         emit Deposit(amount, depositedValue);
+    }
+
+    function withdraw(uint256 amount) external onlyVault {
+        if(amount == 0) {
+            revert SYS__ZeroAmount();
+        }
+        if(amount > depositedValue) {
+            revert SYS__GreaterThanDepositedValue();
+        }
+        if(!live) {
+            revert SYS__NotLive();
+        }
+        bool withdrawn = mockUSDC.transfer(vault, amount);
+        if (!withdrawn) {
+            revert SYS__WithdrawNotSuccessful();
+        }
+        depositedValue -= amount;
+        emit Withdraw(amount, depositedValue);
     }
 
     function getMockUSDCAddress() external view returns (address) {

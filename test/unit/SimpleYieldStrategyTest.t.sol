@@ -92,4 +92,64 @@ contract SimpleYieldStrategyTest is Test {
         vm.expectRevert(SimpleYieldStrategy.SYS__OnlyVault.selector);
         strategy.setLive(false);      
     }
+
+    function test_Withdraw() public {
+        mockUSDC.mint(vault, 100e6);
+
+        vm.startPrank(vault);
+        mockUSDC.approve(address(strategy), 100e6);
+        strategy.deposit(100e6);
+
+        strategy.withdraw(40e6);
+        vm.stopPrank();
+
+        assertEq(mockUSDC.balanceOf(address(strategy)), 60e6);
+        assertEq(mockUSDC.balanceOf(vault), 40e6);
+        assertEq(strategy.totalValue(), 60e6);
+    }
+
+    function test_Withdraw_RevertsIfZeroAmount() public {
+        vm.prank(vault);
+
+        vm.expectRevert(SimpleYieldStrategy.SYS__ZeroAmount.selector);
+        strategy.withdraw(0);
+    }
+
+    function test_Withdraw_RevertsIfGreaterThanDepositedValue() public {
+        mockUSDC.mint(vault, 100e6);
+
+        vm.startPrank(vault);
+        mockUSDC.approve(address(strategy), 100e6);
+        strategy.deposit(100e6);
+
+        vm.expectRevert(
+            SimpleYieldStrategy.SYS__GreaterThanDepositedValue.selector
+        );
+        strategy.withdraw(101e6);
+
+        vm.stopPrank();
+    }
+
+    function test_Withdraw_OnlyVaultCanWithdraw() public {
+        vm.expectRevert(SimpleYieldStrategy.SYS__OnlyVault.selector);
+
+        strategy.withdraw(10e6);
+    }
+
+    function test_Withdraw_RevertsIfNotLive() public {
+        mockUSDC.mint(vault, 100e6);
+
+        vm.startPrank(vault);
+        mockUSDC.approve(address(strategy), 100e6);
+        strategy.deposit(100e6);
+
+        strategy.setLive(false);
+
+        vm.expectRevert(SimpleYieldStrategy.SYS__NotLive.selector);
+        strategy.withdraw(50e6);
+
+        vm.stopPrank();
+    }
+
+    
 }
