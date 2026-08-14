@@ -20,15 +20,9 @@ contract StablecoinVaultTest is Test {
         mockUSDC = new MockUSDC();
         xusd = new XUSD();
 
-        vault = new StablecoinVault(
-            address(mockUSDC),
-            address(xusd)
-        );
+        vault = new StablecoinVault(address(mockUSDC), address(xusd));
 
-        strategy = new SimpleYieldStrategy(
-            address(mockUSDC),
-            address(vault)
-        );
+        strategy = new SimpleYieldStrategy(address(mockUSDC), address(vault));
 
         vault.setStrategy(address(strategy));
 
@@ -43,35 +37,21 @@ contract StablecoinVaultTest is Test {
     }
 
     function test_SetStrategy() public view {
-        assertEq(
-            vault.getStrategyAddress(),
-            address(strategy)
-        );
+        assertEq(vault.getStrategyAddress(), address(strategy));
     }
 
     function test_SetStrategy_RevertsIfZeroAddress() public {
-        StablecoinVault newVault = new StablecoinVault(
-            address(mockUSDC),
-            address(xusd)
-        );
+        StablecoinVault newVault = new StablecoinVault(address(mockUSDC), address(xusd));
 
-        vm.expectRevert(
-            StablecoinVault.SV__ZeroAddressStrategy.selector
-        );
+        vm.expectRevert(StablecoinVault.SV__ZeroAddressStrategy.selector);
 
         newVault.setStrategy(address(0));
     }
 
     function test_SetStrategy_RevertsIfAlreadySet() public {
-        SimpleYieldStrategy anotherStrategy =
-            new SimpleYieldStrategy(
-                address(mockUSDC),
-                address(vault)
-            );
+        SimpleYieldStrategy anotherStrategy = new SimpleYieldStrategy(address(mockUSDC), address(vault));
 
-        vm.expectRevert(
-            StablecoinVault.SV__StrategyAlreadySet.selector
-        );
+        vm.expectRevert(StablecoinVault.SV__StrategyAlreadySet.selector);
 
         vault.setStrategy(address(anotherStrategy));
     }
@@ -81,9 +61,7 @@ contract StablecoinVaultTest is Test {
 
         vm.prank(attacker);
 
-        vm.expectRevert(
-            StablecoinVault.SV__OnlyDeployer.selector
-        );
+        vm.expectRevert(StablecoinVault.SV__OnlyDeployer.selector);
 
         vault.setStrategy(address(strategy));
     }

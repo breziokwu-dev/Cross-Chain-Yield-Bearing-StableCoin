@@ -6,7 +6,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 contract XUSD is ERC20 {
     address public vault;
     address public immutable deployer;
-    
+
     error XUSD__OnlyDeployer();
     error XUSD__ZeroAddressVault();
     error XUSD__OnlyVault();

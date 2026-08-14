@@ -38,10 +38,10 @@ contract StablecoinVault {
     }
 
     modifier moreThanZero(uint256 amount) {
-        if(amount == 0){
+        if (amount == 0) {
             revert SV__MustBeMoreThanZero();
         }
-        _;        
+        _;
     }
 
     modifier onlyDeployer() {
@@ -51,13 +51,13 @@ contract StablecoinVault {
         _;
     }
 
-    function totalAssets() public view returns(uint256) {
+    function totalAssets() public view returns (uint256) {
         return strategy.totalValue();
     }
 
     function deposit(uint256 amount) external moreThanZero(amount) {
         bool transfered = mockUSDC.transferFrom(msg.sender, address(this), amount);
-        if(!transfered){
+        if (!transfered) {
             revert SV__TransferNotSuccessful();
         }
         collateralBalance[msg.sender] += amount;

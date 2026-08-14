@@ -14,9 +14,9 @@ contract SimpleYieldStrategyTest is Test {
 
     function setUp() public {
         mockUSDC = new MockUSDC();
-        strategy = new SimpleYieldStrategy(address(mockUSDC),vault);
+        strategy = new SimpleYieldStrategy(address(mockUSDC), vault);
     }
-    
+
     function test_StrategyIsDeployedProperly() public view {
         assertEq(address(strategy.getMockUSDCAddress()), address(mockUSDC));
         assertEq(strategy.getVaultAddress(), vault);
@@ -90,7 +90,7 @@ contract SimpleYieldStrategyTest is Test {
 
     function test_SetLive_OnlyVaultCanSetLive() public {
         vm.expectRevert(SimpleYieldStrategy.SYS__OnlyVault.selector);
-        strategy.setLive(false);      
+        strategy.setLive(false);
     }
 
     function test_Withdraw() public {
@@ -122,9 +122,7 @@ contract SimpleYieldStrategyTest is Test {
         mockUSDC.approve(address(strategy), 100e6);
         strategy.deposit(100e6);
 
-        vm.expectRevert(
-            SimpleYieldStrategy.SYS__GreaterThanDepositedValue.selector
-        );
+        vm.expectRevert(SimpleYieldStrategy.SYS__GreaterThanDepositedValue.selector);
         strategy.withdraw(101e6);
 
         vm.stopPrank();
