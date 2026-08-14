@@ -23,6 +23,7 @@ contract SimpleYieldStrategy {
 
     event Deposit(uint256 amount, uint256 depositedValue);
     event Withdraw(uint256 amount, uint256 depositedValue);
+    event YieldSimulated(uint256 amount, uint256 accruedYield);
 
     constructor(address _mockUSDC, address _vault) {
         if (_mockUSDC == address(0)) {
@@ -78,6 +79,17 @@ contract SimpleYieldStrategy {
         }
         depositedValue -= amount;
         emit Withdraw(amount, depositedValue);
+    }
+
+    function simulateYield(uint256 amount) external onlyVault {
+        if(amount == 0) {
+            revert SYS__ZeroAmount();
+        }
+        if(!live) {
+            revert SYS__NotLive();
+        }
+        accruedYield += amount;
+        emit YieldSimulated(amount, accruedYield);
     }
 
     function getMockUSDCAddress() external view returns (address) {

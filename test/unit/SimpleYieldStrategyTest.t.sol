@@ -151,5 +151,59 @@ contract SimpleYieldStrategyTest is Test {
         vm.stopPrank();
     }
 
-    
+    function test_SimulateYield_SuccessfulSimulation() public {
+        mockUSDC.mint(vault, 100e6);
+
+        vm.startPrank(vault);
+        mockUSDC.approve(address(strategy), 100e6);
+        strategy.deposit(100e6);
+
+        strategy.simulateYield(20e6);
+        vm.stopPrank();
+
+        assertEq(strategy.totalValue(), 120e6);
+    }
+
+    function test_SimulateYield_RevertsIfZeroAmount() public {
+        vm.prank(vault);
+
+        vm.expectRevert(SimpleYieldStrategy.SYS__ZeroAmount.selector);
+        strategy.simulateYield(0);
+    }
+
+    function test_SimulateYield_OnlyVaultCanSimulateYield() public {
+        vm.expectRevert(SimpleYieldStrategy.SYS__OnlyVault.selector);
+
+        strategy.simulateYield(10e6);
+    }
+
+    function test_SimulateYield_RevertsIfNotLive() public {
+        mockUSDC.mint(vault, 100e6);
+
+        vm.startPrank(vault);
+        mockUSDC.approve(address(strategy), 100e6);
+        strategy.deposit(100e6);
+
+        strategy.setLive(false);
+
+        vm.expectRevert(SimpleYieldStrategy.SYS__NotLive.selector);
+        strategy.simulateYield(10e6);
+
+        vm.stopPrank();
+    }
+
+    function test_SimulateYield_MultipleSimulationsAccumulate() public {
+        mockUSDC.mint(vault, 100e6);
+
+        vm.startPrank(vault);
+        mockUSDC.approve(address(strategy), 100e6);
+        strategy.deposit(100e6);
+
+        strategy.simulateYield(10e6);
+        strategy.simulateYield(15e6);
+        vm.stopPrank();
+
+        assertEq(strategy.totalValue(), 125e6);
+    }
+
 }
