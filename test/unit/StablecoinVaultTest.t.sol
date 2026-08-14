@@ -6,11 +6,13 @@ import {Test} from "forge-std/Test.sol";
 import {MockUSDC} from "../../src/MockUSDC.sol";
 import {XUSD} from "../../src/XUSD.sol";
 import {StablecoinVault} from "../../src/StablecoinVault.sol";
+import {SimpleYieldStrategy} from "../../src/SimpleYieldStrategy.sol";
 
 contract StablecoinVaultTest is Test {
     MockUSDC mockUSDC;
     XUSD xusd;
     StablecoinVault vault;
+    SimpleYieldStrategy strategy;
 
     address user = makeAddr("user");
 
@@ -23,6 +25,13 @@ contract StablecoinVaultTest is Test {
             address(xusd)
         );
 
+        strategy = new SimpleYieldStrategy(
+            address(mockUSDC),
+            address(vault)
+        );
+
+        vault.setStrategy(address(strategy));
+
         xusd.setVault(address(vault));
 
         mockUSDC.mint(user, 1000e6);
@@ -31,6 +40,52 @@ contract StablecoinVaultTest is Test {
     function test_AddressesAreCorrect() public view {
         assertEq(vault.getMockUSDCAddress(), address(mockUSDC));
         assertEq(vault.getXUSDAddress(), address(xusd));
+    }
+
+    function test_SetStrategy() public view {
+        assertEq(
+            vault.getStrategyAddress(),
+            address(strategy)
+        );
+    }
+
+    function test_SetStrategy_RevertsIfZeroAddress() public {
+        StablecoinVault newVault = new StablecoinVault(
+            address(mockUSDC),
+            address(xusd)
+        );
+
+        vm.expectRevert(
+            StablecoinVault.SV__ZeroAddressStrategy.selector
+        );
+
+        newVault.setStrategy(address(0));
+    }
+
+    function test_SetStrategy_RevertsIfAlreadySet() public {
+        SimpleYieldStrategy anotherStrategy =
+            new SimpleYieldStrategy(
+                address(mockUSDC),
+                address(vault)
+            );
+
+        vm.expectRevert(
+            StablecoinVault.SV__StrategyAlreadySet.selector
+        );
+
+        vault.setStrategy(address(anotherStrategy));
+    }
+
+    function test_SetStrategy_OnlyDeployer() public {
+        address attacker = makeAddr("attacker");
+
+        vm.prank(attacker);
+
+        vm.expectRevert(
+            StablecoinVault.SV__OnlyDeployer.selector
+        );
+
+        vault.setStrategy(address(strategy));
     }
 
     function test_IntiialAssetsAreZero() public view {
@@ -44,7 +99,9 @@ contract StablecoinVaultTest is Test {
         vm.stopPrank();
 
         assertEq(vault.totalAssets(), 100e6);
-        assertEq(mockUSDC.balanceOf(address(vault)), 100e6);
+        assertEq(strategy.totalValue(), 100e6);
+        assertEq(vault.getCollateralBalance(user), 100e6);
+        assertEq(mockUSDC.balanceOf(address(strategy)), 100e6);
         assertEq(mockUSDC.balanceOf(user), 900e6);
     }
 
@@ -91,7 +148,8 @@ contract StablecoinVaultTest is Test {
 
         assertEq(vault.totalAssets(), 300e6);
         assertEq(vault.getCollateralBalance(user), 300e6);
-        assertEq(mockUSDC.balanceOf(address(vault)), 300e6);
+        assertEq(mockUSDC.balanceOf(address(strategy)), 300e6);
+        assertEq(strategy.totalValue(), 300e6);
     }
 
     function test_Deposit_MultipleDepositsAccumulateFromMultipleUsers() public {
