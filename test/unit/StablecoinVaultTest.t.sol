@@ -259,4 +259,125 @@ contract StablecoinVaultTest is Test {
 
         vm.stopPrank();
     }
+
+    function test_MintXUSD() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vault.mintXUSD(50e6);
+
+        vm.stopPrank();
+
+        assertEq(xusd.balanceOf(user), 50e6);
+    }
+
+    function test_MintXUSD_RevertsIfZeroAmount() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vm.expectRevert(StablecoinVault.SV__MustBeMoreThanZero.selector);
+        vault.mintXUSD(0);
+
+        vm.stopPrank();
+    }
+
+    function test_MintXUSD_RevertsIfInsufficientCollateral() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vm.expectRevert(StablecoinVault.SV__InsufficientCollateral.selector);
+        vault.mintXUSD(101e6);
+
+        vm.stopPrank();
+    }
+
+    function test_MintXUSD_EmitsMintedEvent() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vm.expectEmit(true, true, false, true);
+        emit StablecoinVault.Minted(user, 50e6);
+
+        vault.mintXUSD(50e6);
+        vm.stopPrank();
+    }
+
+    function test_MintXUSD_RevertsIfNoCollateral() public {
+        vm.startPrank(user);
+
+        vm.expectRevert(
+            StablecoinVault.SV__InsufficientCollateral.selector
+        );
+
+        vault.mintXUSD(50e6);
+
+        vm.stopPrank();
+    }
+
+    function test_MintXUSD_MultipleMintsAccumulate() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vault.mintXUSD(50e6);
+        vault.mintXUSD(30e6);
+
+        vm.stopPrank();
+
+        assertEq(xusd.balanceOf(user), 80e6);
+    }
+
+    function test_MintXUSD_MultipleMintsAccumulateFromMultipleUsers() public {
+        address user2 = makeAddr("user2");
+
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vault.mintXUSD(50e6);
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+        mockUSDC.mint(user2, 500e6);
+        mockUSDC.approve(address(vault), 200e6);
+        vault.deposit(200e6);
+
+        vault.mintXUSD(100e6);
+        vm.stopPrank();
+
+        assertEq(xusd.balanceOf(user), 50e6);
+        assertEq(xusd.balanceOf(user2), 100e6);
+    }
+
+    function test_MintXUSD_RevertsIfExceedingCollateralAfterMultipleMints() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vault.mintXUSD(50e6);
+
+        vm.expectRevert(
+            StablecoinVault.SV__InsufficientCollateral.selector
+        );
+
+        vault.mintXUSD(60e6);
+
+        vm.stopPrank();
+    }
+
+    function test_MintXUSD_AllowsMintExactCollateral() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vault.mintXUSD(100e6);
+
+        vm.stopPrank();
+
+        assertEq(xusd.balanceOf(user), 100e6);
+    }
 }

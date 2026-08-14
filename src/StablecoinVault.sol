@@ -13,7 +13,9 @@ contract StablecoinVault {
     address internal deployer;
 
     mapping(address sender => uint256 collateral) internal collateralBalance;
+    mapping(address user => uint256 amount) internal xusdMinted;
     uint256 internal vaultCollateralBalance;
+    uint256 internal vaultMintedUSDC;
 
     error SV__MustBeMoreThanZero();
     error SV__TransferNotSuccessful();
@@ -27,6 +29,7 @@ contract StablecoinVault {
 
     event Deposit(address sender, uint256 amount);
     event Withdraw(address sender, uint256 amount);
+    event Minted(address sender, uint256 amount);
 
     constructor(address _mockUSDC, address _xusd) {
         if (_mockUSDC == address(0)) {
@@ -86,6 +89,16 @@ contract StablecoinVault {
         vaultCollateralBalance -= amount;
 
         emit Withdraw(msg.sender, amount);
+    }
+
+    function mintXUSD(uint256 amount) external moreThanZero(amount) {
+        if(xusdMinted[msg.sender] + amount > collateralBalance[msg.sender]) {
+            revert SV__InsufficientCollateral();
+        }
+        xusdMinted[msg.sender] += amount;
+        vaultMintedUSDC += amount;
+        xusd.mint(msg.sender, amount);
+        emit Minted(msg.sender, amount);
     }
 
     function setStrategy(address _strategy) external onlyDeployer {
