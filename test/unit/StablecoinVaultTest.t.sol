@@ -555,4 +555,15 @@ contract StablecoinVaultTest is Test {
 
         vm.stopPrank();
     }
+
+    function test_getTotalAssets() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vm.stopPrank();
+
+        vm.prank(address(vault));
+        strategy.simulateYield(20e6);
+        assertEq(vault.totalAssets(), 120e6);
+    }
 }

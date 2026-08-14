@@ -59,10 +59,6 @@ contract StablecoinVault {
         _;
     }
 
-    function totalAssets() public view returns (uint256) {
-        return strategy.totalValue();
-    }
-
     function deposit(uint256 amount) external moreThanZero(amount) {
         bool transfered = mockUSDC.transferFrom(msg.sender, address(this), amount);
         if (!transfered) {
@@ -128,6 +124,10 @@ contract StablecoinVault {
 
     function getCollateralBalance(address user) external view returns (uint256) {
         return collateralBalance[user];
+    }
+
+    function totalAssets() public view returns (uint256) {
+        return strategy.totalValue();
     }
 
     function getMockUSDCAddress() external view returns (address) {
