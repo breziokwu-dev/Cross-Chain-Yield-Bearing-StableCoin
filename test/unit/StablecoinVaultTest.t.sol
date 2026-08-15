@@ -631,5 +631,62 @@ contract StablecoinVaultTest is Test {
 
         assertEq(vault.getShareBalance(user), 0);
         assertEq(vault.getTotalShares(), 0);
-    } 
+    }
+
+    function test_ConvertSharesToAssets() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vm.stopPrank();
+
+        assertEq(vault.convertToAssets(100e6), 100e6);
+    }
+
+    function test_ConvertSharesToAssetsAfterYield() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vm.stopPrank();
+
+        vm.prank(address(vault));
+        strategy.simulateYield(20e6);
+
+        assertEq(vault.convertToAssets(100e6), 120e6);
+    }
+
+    function test_WithdrawBurnsShares() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vault.withdraw(40e6);
+
+        vm.stopPrank();
+
+        assertEq(vault.getShareBalance(user), 60e6);
+        assertEq(vault.getTotalShares(), 60e6);
+    }
+
+    function test_WithdrawAfterYieldBurnsCorrectShares() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vm.stopPrank();
+
+        vm.prank(address(vault));
+        strategy.simulateYield(20e6);
+
+        vm.prank(user);
+        vault.withdraw(60e6);
+
+        assertEq(vault.getShareBalance(user), 50e6);
+        assertEq(vault.getTotalShares(), 50e6);
+    }
 }

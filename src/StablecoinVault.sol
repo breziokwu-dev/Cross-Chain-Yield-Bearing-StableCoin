@@ -88,9 +88,11 @@ contract StablecoinVault {
         if (collateralBalance[msg.sender] < amount) {
             revert SV__InsufficientCollateral();
         }
-        if (xusdMinted[msg.sender] + amount > collateralBalance[msg.sender]) {
+        uint256 userAssets = convertToAssets(shareBalance[msg.sender]);
+        if (amount > userAssets - xusdMinted[msg.sender]) {
             revert SV__InsufficientCollateral();
         }
+        uint256 sharesToBurn = (amount * totalShares) / totalAssets();
         strategy.withdraw(amount);
         bool transfered = mockUSDC.transfer(msg.sender, amount);
         if (!transfered) {
@@ -98,6 +100,8 @@ contract StablecoinVault {
         }
         collateralBalance[msg.sender] -= amount;
         vaultCollateralBalance -= amount;
+        shareBalance[msg.sender] -= sharesToBurn;
+        totalShares -= sharesToBurn;
 
         emit Withdraw(msg.sender, amount);
     }
@@ -130,6 +134,14 @@ contract StablecoinVault {
             revert SV__StrategyAlreadySet();
         }
         strategy = SimpleYieldStrategy(_strategy);
+    }
+
+    function convertToAssets(uint256 shares) public view returns (uint256) {
+        if (totalShares == 0) {
+            return 0;
+        }
+
+        return (shares * totalAssets()) / totalShares;
     }
 
     function getCollateralBalance(address user) external view returns (uint256) {
