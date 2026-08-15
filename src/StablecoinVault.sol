@@ -11,6 +11,7 @@ contract StablecoinVault {
     XUSD internal xusd;
     SimpleYieldStrategy internal strategy;
     address internal deployer;
+    uint256 internal constant COLLATERALIZATION_RATIO = 150;
 
     mapping(address user => uint256 collateral) internal collateralBalance;
     mapping(address user => uint256 amount) internal xusdMinted;
@@ -107,12 +108,25 @@ contract StablecoinVault {
     }
 
     function mintXUSD(uint256 amount) external moreThanZero(amount) {
-        if (xusdMinted[msg.sender] + amount > collateralBalance[msg.sender]) {
+        uint256 collateralValue = convertToAssets(shareBalance[msg.sender]);
+
+        uint256 maxMintable = (collateralValue * 100) / COLLATERALIZATION_RATIO;
+
+        if (xusdMinted[msg.sender] > maxMintable) {
             revert SV__InsufficientCollateral();
         }
+
+        uint256 availableToMint = maxMintable - xusdMinted[msg.sender];
+
+        if (amount > availableToMint) {
+            revert SV__InsufficientCollateral();
+        }
+
         xusdMinted[msg.sender] += amount;
         vaultMintedUSDC += amount;
+
         xusd.mint(msg.sender, amount);
+
         emit Minted(msg.sender, amount);
     }
 
@@ -158,6 +172,10 @@ contract StablecoinVault {
 
     function totalAssets() public view returns (uint256) {
         return strategy.totalValue();
+    }
+
+    function getxusdMinted(address user) external view returns (uint256) {
+        return xusdMinted[user];
     }
 
     function getMockUSDCAddress() external view returns (address) {

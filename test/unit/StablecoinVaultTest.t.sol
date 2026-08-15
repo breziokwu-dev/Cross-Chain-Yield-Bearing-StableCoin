@@ -319,12 +319,12 @@ contract StablecoinVaultTest is Test {
         mockUSDC.approve(address(vault), 100e6);
         vault.deposit(100e6);
 
-        vault.mintXUSD(50e6);
         vault.mintXUSD(30e6);
+        vault.mintXUSD(20e6);
 
         vm.stopPrank();
 
-        assertEq(xusd.balanceOf(user), 80e6);
+        assertEq(xusd.balanceOf(user), 50e6);
     }
 
     function test_MintXUSD_MultipleMintsAccumulateFromMultipleUsers() public {
@@ -368,11 +368,11 @@ contract StablecoinVaultTest is Test {
         mockUSDC.approve(address(vault), 100e6);
         vault.deposit(100e6);
 
-        vault.mintXUSD(100e6);
+        vault.mintXUSD(66_666_666);
 
         vm.stopPrank();
 
-        assertEq(xusd.balanceOf(user), 100e6);
+        assertEq(xusd.balanceOf(user), 66_666_666);
     }
 
     function test_BurnXUSD() public {
@@ -494,11 +494,11 @@ contract StablecoinVaultTest is Test {
         mockUSDC.approve(address(vault), 100e6);
         vault.deposit(100e6);
 
-        vault.mintXUSD(80e6);
+        vault.mintXUSD(60e6);
 
         vm.expectRevert(StablecoinVault.SV__InsufficientCollateral.selector);
 
-        vault.withdraw(30e6);
+        vault.withdraw(50e6);
 
         vm.stopPrank();
     }
@@ -508,18 +508,18 @@ contract StablecoinVaultTest is Test {
         mockUSDC.approve(address(vault), 100e6);
         vault.deposit(100e6);
 
-        vault.mintXUSD(80e6);
+        vault.mintXUSD(60e6);
         vault.burnXUSD(30e6);
 
-        vault.withdraw(30e6);
+        vault.withdraw(40e6);
 
         vm.stopPrank();
 
-        assertEq(vault.totalAssets(), 70e6);
-        assertEq(strategy.totalValue(), 70e6);
-        assertEq(vault.getCollateralBalance(user), 70e6);
-        assertEq(mockUSDC.balanceOf(address(strategy)), 70e6);
-        assertEq(mockUSDC.balanceOf(user), 930e6);
+        assertEq(vault.totalAssets(), 60e6);
+        assertEq(strategy.totalValue(), 60e6);
+        assertEq(vault.getCollateralBalance(user), 60e6);
+        assertEq(mockUSDC.balanceOf(address(strategy)), 60e6);
+        assertEq(mockUSDC.balanceOf(user), 940e6);
     }
 
     function test_Withdraw_CanWithdrawAllAfterBurningXUSD() public {
@@ -527,8 +527,8 @@ contract StablecoinVaultTest is Test {
         mockUSDC.approve(address(vault), 100e6);
         vault.deposit(100e6);
 
-        vault.mintXUSD(80e6);
-        vault.burnXUSD(80e6);
+        vault.mintXUSD(60e6);
+        vault.burnXUSD(60e6);
 
         vault.withdraw(100e6);
 
@@ -546,7 +546,7 @@ contract StablecoinVaultTest is Test {
         mockUSDC.approve(address(vault), 100e6);
         vault.deposit(100e6);
 
-        vault.mintXUSD(80e6);
+        vault.mintXUSD(60e6);
         vault.burnXUSD(30e6);
 
         vm.expectRevert(StablecoinVault.SV__InsufficientCollateral.selector);
@@ -688,5 +688,39 @@ contract StablecoinVaultTest is Test {
 
         assertEq(vault.getShareBalance(user), 50e6);
         assertEq(vault.getTotalShares(), 50e6);
+    }
+
+    function test_MintXUSD_AccountsForYield() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vm.stopPrank();
+
+        vm.prank(address(vault));
+        strategy.simulateYield(20e6);
+
+        vm.prank(user);
+        vault.mintXUSD(80e6);
+
+        assertEq(vault.getxusdMinted(user), 80e6);
+        assertEq(xusd.balanceOf(user), 80e6);
+    }
+
+    function test_MintXUSD_RevertsAccountsForYield() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vm.stopPrank();
+
+        vm.prank(address(vault));
+        strategy.simulateYield(20e6);
+
+        vm.prank(user);
+        vm.expectRevert(StablecoinVault.SV__InsufficientCollateral.selector);
+        vault.mintXUSD(81e6);
     }
 }
