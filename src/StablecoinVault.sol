@@ -12,10 +12,12 @@ contract StablecoinVault {
     SimpleYieldStrategy internal strategy;
     address internal deployer;
 
-    mapping(address sender => uint256 collateral) internal collateralBalance;
+    mapping(address user => uint256 collateral) internal collateralBalance;
     mapping(address user => uint256 amount) internal xusdMinted;
+    mapping(address user => uint256 shares) internal shareBalance;
     uint256 internal vaultCollateralBalance;
     uint256 internal vaultMintedUSDC;
+    uint256 internal totalShares;
 
     error SV__MustBeMoreThanZero();
     error SV__TransferNotSuccessful();
@@ -60,12 +62,20 @@ contract StablecoinVault {
     }
 
     function deposit(uint256 amount) external moreThanZero(amount) {
-        bool transfered = mockUSDC.transferFrom(msg.sender, address(this), amount);
-        if (!transfered) {
+        uint256 shares;
+        if (totalShares == 0) {
+            shares = amount;
+        } else {
+            shares = (amount * totalShares) / totalAssets();
+        }
+        bool transferred = mockUSDC.transferFrom(msg.sender, address(this), amount);
+        if (!transferred) {
             revert SV__TransferNotSuccessful();
         }
         collateralBalance[msg.sender] += amount;
         vaultCollateralBalance += amount;
+        shareBalance[msg.sender] += shares;
+        totalShares += shares;
         mockUSDC.approve(address(strategy), amount);
         strategy.deposit(amount);
         emit Deposit(msg.sender, amount);
@@ -124,6 +134,14 @@ contract StablecoinVault {
 
     function getCollateralBalance(address user) external view returns (uint256) {
         return collateralBalance[user];
+    }
+
+    function getShareBalance(address user) external view returns (uint256) {
+        return shareBalance[user];
+    }
+
+    function getTotalShares() external view returns (uint256) {
+        return totalShares;
     }
 
     function totalAssets() public view returns (uint256) {

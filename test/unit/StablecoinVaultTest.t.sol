@@ -566,4 +566,70 @@ contract StablecoinVaultTest is Test {
         strategy.simulateYield(20e6);
         assertEq(vault.totalAssets(), 120e6);
     }
+
+    function test_FirstDepositGetsOneToOneShares() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vm.stopPrank();
+
+        assertEq(vault.getShareBalance(user), 100e6);
+        assertEq(vault.getTotalShares(), 100e6);
+    }
+
+    function test_SecondDepositWithoutYield() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vm.stopPrank();
+        address user2 = makeAddr("user2");
+        mockUSDC.mint(user2, 100e6);
+        vm.startPrank(user2);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vm.stopPrank();
+        assertEq(vault.getShareBalance(user), 100e6);
+        assertEq(vault.getShareBalance(user2), 100e6);
+        assertEq(vault.getTotalShares(), 200e6);
+    }
+
+    function test_SecondDepositWithYield() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vm.stopPrank();
+
+        vm.startPrank(address(vault));
+        strategy.simulateYield(20e6);
+        vm.stopPrank();
+
+        address user2 = makeAddr("user2");
+        mockUSDC.mint(user2, 100e6);
+        vm.startPrank(user2);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vm.stopPrank();
+
+        assertEq(vault.getShareBalance(user), 100e6);
+        assertEq(vault.getShareBalance(user2), 83_333_333);
+        assertEq(vault.totalAssets(), 220e6);
+        assertEq(vault.getTotalShares(), 183_333_333);
+    }
+
+    function test_Deposit_FailedTransferDoesNotCreateShares() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 50e6);
+
+        vm.expectRevert();
+
+        vault.deposit(100e6);
+
+        vm.stopPrank();
+
+        assertEq(vault.getShareBalance(user), 0);
+        assertEq(vault.getTotalShares(), 0);
+    } 
 }
