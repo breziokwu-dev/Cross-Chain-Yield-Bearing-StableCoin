@@ -11,10 +11,13 @@ contract SimpleYieldStrategyTest is Test {
     SimpleYieldStrategy strategy;
 
     address vault = makeAddr("vault");
+    address user = makeAddr("user");
 
     function setUp() public {
         mockUSDC = new MockUSDC();
         strategy = new SimpleYieldStrategy(address(mockUSDC), vault);
+
+        mockUSDC.mint(user, 1000e6);
     }
 
     function test_StrategyIsDeployedProperly() public view {

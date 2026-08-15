@@ -24,6 +24,7 @@ contract SimpleYieldStrategy {
     event Deposit(uint256 amount, uint256 depositedValue);
     event Withdraw(uint256 amount, uint256 depositedValue);
     event YieldSimulated(uint256 amount, uint256 accruedYield);
+    event LossSimulated(uint256 amount, uint256 remainingValue);
 
     constructor(address _mockUSDC, address _vault) {
         if (_mockUSDC == address(0)) {
@@ -92,6 +93,24 @@ contract SimpleYieldStrategy {
         emit YieldSimulated(amount, accruedYield);
     }
 
+    function simulateLoss(uint256 amount) external onlyVault {
+        if (amount == 0) {
+            revert SYS__ZeroAmount();
+        }
+
+        if (amount > depositedValue) {
+            revert SYS__GreaterThanDepositedValue();
+        }
+
+        if (!live) {
+            revert SYS__NotLive();
+        }
+
+        depositedValue -= amount;
+
+        emit LossSimulated(amount, depositedValue);
+    }
+
     function getMockUSDCAddress() external view returns (address) {
         return address(mockUSDC);
     }
@@ -103,21 +122,4 @@ contract SimpleYieldStrategy {
     function setLive(bool _live) external onlyVault {
         live = _live;
     }
-    // state variables
-
-    // custom errors
-
-    // events
-
-    // constructor
-
-    // modifiers
-
-    // deposit
-
-    // withdraw
-
-    // simulateYield
-
-    // totalValue
 }

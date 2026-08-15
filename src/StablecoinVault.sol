@@ -12,6 +12,7 @@ contract StablecoinVault {
     SimpleYieldStrategy internal strategy;
     address internal deployer;
     uint256 internal constant COLLATERALIZATION_RATIO = 150;
+    uint256 internal constant LIQUIDATION_THRESHOLD = 110;
 
     mapping(address user => uint256 collateral) internal collateralBalance;
     mapping(address user => uint256 amount) internal xusdMinted;
@@ -83,14 +84,19 @@ contract StablecoinVault {
     }
 
     function withdraw(uint256 amount) external moreThanZero(amount) {
+        uint256 collateralValue = convertToAssets(shareBalance[msg.sender]);
+
         if (collateralBalance[msg.sender] == 0) {
             revert SV__NoCollateralDeposited();
         }
         if (collateralBalance[msg.sender] < amount) {
             revert SV__InsufficientCollateral();
         }
-        uint256 userAssets = convertToAssets(shareBalance[msg.sender]);
-        if (amount > userAssets - xusdMinted[msg.sender]) {
+        if (xusdMinted[msg.sender] >= collateralValue) {
+            revert SV__InsufficientCollateral();
+        }
+        uint256 availableCollateral = collateralValue - xusdMinted[msg.sender];
+        if (amount > availableCollateral) {
             revert SV__InsufficientCollateral();
         }
         uint256 sharesToBurn = (amount * totalShares) / totalAssets();
@@ -156,6 +162,27 @@ contract StablecoinVault {
         }
 
         return (shares * totalAssets()) / totalShares;
+    }
+
+    function healthFactor(address user) public view returns (uint256) {
+        uint256 collateralValue = convertToAssets(shareBalance[user]);
+        uint256 debt = xusdMinted[user];
+
+        if (debt == 0) {
+            return type(uint256).max;
+        }
+
+        return (collateralValue * 100) / debt;
+    }
+
+    function isLiquidatable(address user) public view returns (bool) {
+        uint256 debt = xusdMinted[user];
+
+        if (debt == 0) {
+            return false;
+        }
+
+        return healthFactor(user) < LIQUIDATION_THRESHOLD;
     }
 
     function getCollateralBalance(address user) external view returns (uint256) {

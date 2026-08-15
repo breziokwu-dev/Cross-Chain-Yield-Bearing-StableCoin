@@ -723,4 +723,137 @@ contract StablecoinVaultTest is Test {
         vm.expectRevert(StablecoinVault.SV__InsufficientCollateral.selector);
         vault.mintXUSD(81e6);
     }
+
+    function test_WithdrawAfterYieldWithXUSDDebt() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vm.stopPrank();
+
+        vm.prank(address(vault));
+        strategy.simulateYield(20e6);
+
+        vm.prank(user);
+        vault.mintXUSD(60e6);
+
+        vm.prank(user);
+        vault.withdraw(60e6);
+    }
+
+    function test_WithdrawAfterYieldCannotExceedAvailableCollateral() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vm.stopPrank();
+
+        vm.prank(address(vault));
+        strategy.simulateYield(20e6);
+
+        vm.prank(user);
+        vault.mintXUSD(60e6);
+
+        vm.startPrank(user);
+
+        vm.expectRevert(StablecoinVault.SV__InsufficientCollateral.selector);
+        vault.withdraw(61e6);
+
+        vm.stopPrank();
+    }
+
+    function test_HealthFactor() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+
+        vm.stopPrank();
+
+        assertEq(vault.healthFactor(user), 166);
+    }
+
+    function test_HealthFactorImprovesWithYield() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+
+        vm.stopPrank();
+
+        vm.prank(address(vault));
+        strategy.simulateYield(20e6);
+
+        assertEq(vault.healthFactor(user), 200);
+    }
+
+    function test_HealthFactorWithNoDebt() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vm.stopPrank();
+
+        assertEq(vault.healthFactor(user), type(uint256).max);
+    }
+
+    function test_IsLiquidatableReturnsFalseForHealthyPosition() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+
+        vm.stopPrank();
+
+        assertEq(vault.isLiquidatable(user), false);
+    }
+
+    function test_SimulateLoss_SuccessfulSimulation() public {
+        mockUSDC.mint(address(vault), 100e6);
+
+        vm.startPrank(address(vault));
+        mockUSDC.approve(address(strategy), 100e6);
+        strategy.deposit(100e6);
+
+        strategy.simulateLoss(20e6);
+        vm.stopPrank();
+
+        assertEq(strategy.totalValue(), 80e6);
+    }
+
+    function test_TotalAssetsDecreaseAfterLoss() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vm.stopPrank();
+
+        vm.prank(address(vault));
+        strategy.simulateLoss(40e6);
+
+        assertEq(vault.totalAssets(), 60e6);
+    }
+
+    function test_HealthFactorFallsAfterLoss() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+
+        vm.stopPrank();
+
+        vm.prank(address(vault));
+        strategy.simulateLoss(40e6);
+
+        assertEq(vault.healthFactor(user), 100);
+        assertTrue(vault.isLiquidatable(user));
+    }
 }
