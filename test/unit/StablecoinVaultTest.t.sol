@@ -1088,4 +1088,154 @@ contract StablecoinVaultTest is Test {
         // User's collateral shares should be completely removed
         assertEq(vault.getShareBalance(user), 0);
     }
+
+    function test_LiquidatePartialDebt2() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+
+        vm.stopPrank();
+
+        // Collateral falls from 100 -> 63 USDC.
+        vm.prank(address(vault));
+        strategy.simulateLoss(37e6);
+
+        assertTrue(vault.isLiquidatable(user));
+
+        // Liquidator deposits enough collateral to mint 20 xUSD.
+        mockUSDC.mint(user2, 100e6);
+
+        vm.startPrank(user2);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(20e6);
+
+        uint256 liquidatorUSDCBefore = mockUSDC.balanceOf(user2);
+
+        vault.liquidate(user, 20e6);
+
+        vm.stopPrank();
+
+        // User's debt should decrease from 60 -> 40 xUSD.
+        assertEq(vault.getxusdMinted(user), 40e6);
+
+        // 20 xUSD repaid + 5% liquidation bonus = 21 USDC.
+        assertEq(mockUSDC.balanceOf(user2), liquidatorUSDCBefore + 21e6);
+
+        // User should still have collateral/shares remaining.
+        assertGt(vault.getShareBalance(user), 0);
+
+        // User should still have a debt position.
+        assertGt(vault.getxusdMinted(user), 0);
+    }
+
+    function test_LiquidateRevertsIfPositionHealthy2() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+
+        mockUSDC.mint(user2, 100e6);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+
+        vm.expectRevert(StablecoinVault.SV__PositionHealthy.selector);
+        vault.liquidate(user, 10e6);
+
+        vm.stopPrank();
+    }
+
+    function test_LiquidateRevertsIfDebtToRepayExceedsUserDebt() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+
+        vm.stopPrank();
+
+        // Make the position liquidatable.
+        vm.prank(address(vault));
+        strategy.simulateLoss(50e6);
+
+        assertTrue(vault.isLiquidatable(user));
+
+        vm.startPrank(user2);
+
+        mockUSDC.mint(user2, 100e6);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+
+        vm.expectRevert(StablecoinVault.SV__InsufficientDebt.selector);
+        vault.liquidate(user, 61e6);
+
+        vm.stopPrank();
+    }
+
+    function test_LiquidateRevertsIfDebtToRepayIsZero() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+
+        vm.stopPrank();
+
+        vm.prank(address(vault));
+        strategy.simulateLoss(50e6);
+
+        assertTrue(vault.isLiquidatable(user));
+
+        vm.startPrank(user2);
+
+        mockUSDC.mint(user2, 100e6);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+
+        vm.expectRevert(StablecoinVault.SV__MustBeMoreThanZero.selector);
+        vault.liquidate(user, 0);
+
+        vm.stopPrank();
+    }
+
+    function test_LiquidateRevertsIfCollateralIsInsufficient() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+
+        vm.stopPrank();
+
+        // Reduce collateral from 100 → 60.
+        vm.prank(address(vault));
+        strategy.simulateLoss(40e6);
+
+        assertTrue(vault.isLiquidatable(user));
+
+        vm.startPrank(user2);
+
+        mockUSDC.mint(user2, 100e6);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+
+        // 60 xUSD + 5% liquidation bonus = 63 USDC.
+        // User only has 60 USDC of collateral remaining.
+        vm.expectRevert(StablecoinVault.SV__InsufficientCollateral.selector);
+        vault.liquidate(user, 60e6);
+
+        vm.stopPrank();
+    }
 }
