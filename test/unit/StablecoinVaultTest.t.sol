@@ -2,7 +2,7 @@
 
 pragma solidity ^0.8.24;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, console2} from "forge-std/Test.sol";
 import {MockUSDC} from "../../src/MockUSDC.sol";
 import {XUSD} from "../../src/XUSD.sol";
 import {StablecoinVault} from "../../src/StablecoinVault.sol";
@@ -15,6 +15,7 @@ contract StablecoinVaultTest is Test {
     SimpleYieldStrategy strategy;
 
     address user = makeAddr("user");
+    address user2 = makeAddr("user2");
 
     function setUp() public {
         mockUSDC = new MockUSDC();
@@ -855,5 +856,236 @@ contract StablecoinVaultTest is Test {
 
         assertEq(vault.healthFactor(user), 100);
         assertTrue(vault.isLiquidatable(user));
+    }
+
+    function test_PositionBecomesLiquidatableAfterLoss() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+
+        vm.stopPrank();
+
+        vm.prank(address(vault));
+        strategy.simulateLoss(40e6);
+
+        assertTrue(vault.isLiquidatable(user));
+        assertEq(vault.healthFactor(user), 100);
+    }
+
+    function test_Liquidate() public {
+        // User deposits collateral and mints xUSD
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+        vm.stopPrank();
+
+        // Make the user's position unhealthy
+        vm.prank(address(vault));
+        strategy.simulateLoss(40e6);
+
+        assertTrue(vault.isLiquidatable(user));
+        assertEq(vault.getxusdMinted(user), 60e6);
+
+        // Give liquidator enough USDC to mint xUSD
+        mockUSDC.mint(user2, 30e6);
+
+        vm.startPrank(user2);
+        mockUSDC.approve(address(vault), 30e6);
+        vault.deposit(30e6);
+        vault.mintXUSD(20e6);
+        vm.stopPrank();
+
+        assertEq(xusd.balanceOf(user2), 20e6);
+
+        uint256 liquidatorBalanceBefore = xusd.balanceOf(user2);
+        uint256 liquidatorUSDCBefore = mockUSDC.balanceOf(user2);
+        uint256 userSharesBefore = vault.getShareBalance(user);
+
+        // Liquidate 20 xUSD
+        vm.prank(user2);
+        vault.liquidate(user, 20e6);
+
+        // Liquidator's xUSD was burned
+        assertEq(xusd.balanceOf(user2), liquidatorBalanceBefore - 20e6);
+
+        // User's debt decreased from 60 → 40
+        assertEq(vault.getxusdMinted(user), 40e6);
+
+        // Liquidator receives 20 + 5% bonus = 21 USDC
+        assertEq(mockUSDC.balanceOf(user2), liquidatorUSDCBefore + 21e6);
+
+        // User lost collateral shares
+        assertLt(vault.getShareBalance(user), userSharesBefore);
+    }
+
+    function test_LiquidateRevertsIfPositionHealthy() public {
+        vm.startPrank(user);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+        vm.stopPrank();
+
+        mockUSDC.mint(user2, 30e6);
+
+        vm.startPrank(user2);
+        mockUSDC.approve(address(vault), 30e6);
+        vault.deposit(30e6);
+        vault.mintXUSD(20e6);
+        vm.stopPrank();
+
+        vm.prank(user2);
+        vm.expectRevert(StablecoinVault.SV__PositionHealthy.selector);
+        vault.liquidate(user, 20e6);
+    }
+
+    function test_LiquidateRevertsIfLiquidationAmountExceedsDebt() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+
+        vm.stopPrank();
+
+        // Make the position unhealthy
+        vm.prank(address(vault));
+        strategy.simulateLoss(40e6);
+
+        assertTrue(vault.isLiquidatable(user));
+
+        vm.prank(user2);
+        vm.expectRevert(StablecoinVault.SV__InsufficientDebt.selector);
+        vault.liquidate(user, 61e6);
+    }
+
+    function test_ZeroLiquidationAmount() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+
+        vm.stopPrank();
+
+        vm.prank(user2);
+        vm.expectRevert(StablecoinVault.SV__MustBeMoreThanZero.selector);
+        vault.liquidate(user, 0);
+    }
+
+    function test_LiquidateRevertsIfNoDebt() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vm.stopPrank();
+
+        vm.prank(user2);
+        vm.expectRevert(StablecoinVault.SV__PositionHealthy.selector);
+        vault.liquidate(user, 20e6);
+    }
+
+    function test_LiquidateEmitsEvent() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+
+        vm.stopPrank();
+
+        vm.prank(address(vault));
+        strategy.simulateLoss(40e6);
+
+        mockUSDC.mint(user2, 30e6);
+
+        vm.startPrank(user2);
+        mockUSDC.approve(address(vault), 30e6);
+        vault.deposit(30e6);
+        vault.mintXUSD(20e6);
+        vm.stopPrank();
+
+        vm.expectEmit(true, true, false, true);
+        emit StablecoinVault.Liquidated(user2, user, 20e6, 21e6);
+
+        vm.prank(user2);
+        vault.liquidate(user, 20e6);
+    }
+
+    function test_LiquidatePartialDebt() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+
+        vm.stopPrank();
+
+        vm.prank(address(vault));
+        strategy.simulateLoss(40e6);
+
+        mockUSDC.mint(user2, 30e6);
+
+        vm.startPrank(user2);
+        mockUSDC.approve(address(vault), 30e6);
+        vault.deposit(30e6);
+        vault.mintXUSD(20e6);
+        vm.stopPrank();
+
+        uint256 debtBefore = vault.getxusdMinted(user);
+
+        vm.prank(user2);
+        vault.liquidate(user, 20e6);
+
+        assertEq(debtBefore, 60e6);
+        assertEq(vault.getxusdMinted(user), 40e6);
+    }
+
+    function test_LiquidateFullDebt() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+
+        vm.stopPrank();
+
+        // Make the position unhealthy:
+        // 100 collateral -> 63 collateral
+        vm.prank(address(vault));
+        strategy.simulateLoss(37e6);
+
+        assertTrue(vault.isLiquidatable(user));
+
+        // Give liquidator enough USDC to mint 60 xUSD
+        mockUSDC.mint(user2, 100e6);
+
+        vm.startPrank(user2);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+        vm.stopPrank();
+
+        uint256 liquidatorUSDCBefore = mockUSDC.balanceOf(user2);
+
+        console2.log("totalAssets", vault.totalAssets());
+        console2.log("totalShares", vault.getTotalShares());
+        console2.log("userShares", vault.getShareBalance(user));
+        console2.log("userAssets", vault.convertToAssets(vault.getShareBalance(user)));
+
+        vm.prank(user2);
+        vault.liquidate(user, 60e6);
+
+        // User's entire debt was repaid
+        assertEq(vault.getxusdMinted(user), 0);
+
+        // 60 xUSD debt + 5% bonus = 63 USDC
+        assertEq(mockUSDC.balanceOf(user2), liquidatorUSDCBefore + 63e6);
+
+        // User's collateral shares should be completely removed
+        assertEq(vault.getShareBalance(user), 0);
     }
 }
