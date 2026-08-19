@@ -1238,4 +1238,107 @@ contract StablecoinVaultTest is Test {
 
         vm.stopPrank();
     }
+
+    function test_WithdrawRevertsIfAmountExceedsAvailableCollateral() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+
+        vm.expectRevert(StablecoinVault.SV__InsufficientCollateral.selector);
+        vault.withdraw(50e6);
+
+        vm.stopPrank();
+    }
+
+    function test_WithdrawReducesCollateralAndShares() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+
+        uint256 balanceBefore = mockUSDC.balanceOf(user);
+        uint256 sharesBefore = vault.getShareBalance(user);
+
+        vault.withdraw(40e6);
+
+        assertEq(mockUSDC.balanceOf(user), balanceBefore + 40e6);
+        assertEq(vault.getCollateralBalance(user), 60e6);
+        assertLt(vault.getShareBalance(user), sharesBefore);
+        assertEq(vault.getxusdMinted(user), 60e6);
+
+        vm.stopPrank();
+    }
+
+    function test_WithdrawFullCollateralWithNoDebt() public {
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        uint256 balanceBefore = mockUSDC.balanceOf(user);
+
+        vault.withdraw(100e6);
+
+        assertEq(mockUSDC.balanceOf(user), balanceBefore + 100e6);
+        assertEq(vault.getCollateralBalance(user), 0);
+        assertEq(vault.getShareBalance(user), 0);
+        assertEq(vault.getxusdMinted(user), 0);
+
+        vm.stopPrank();
+    }
+
+    function test_WithdrawPreservesShareAccounting() public {
+        // User deposits first.
+        vm.startPrank(user);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vm.stopPrank();
+
+        // User2 deposits and creates a non-1:1 share price.
+        mockUSDC.mint(user2, 100e6);
+
+        vm.startPrank(user2);
+
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+
+        vm.stopPrank();
+
+        uint256 userSharesBefore = vault.getShareBalance(user);
+        uint256 totalSharesBefore = vault.getTotalShares();
+        uint256 totalAssetsBefore = vault.totalAssets();
+
+        uint256 withdrawAmount = 25e6;
+
+        vm.prank(user);
+        vault.withdraw(withdrawAmount);
+
+        uint256 userSharesAfter = vault.getShareBalance(user);
+        uint256 totalSharesAfter = vault.getTotalShares();
+        uint256 totalAssetsAfter = vault.totalAssets();
+
+        // User's shares must decrease.
+        assertLt(userSharesAfter, userSharesBefore);
+
+        // Total shares must decrease by the same amount.
+        assertEq(
+            totalSharesBefore - totalSharesAfter,
+            userSharesBefore - userSharesAfter
+        );
+
+        // Assets must decrease by the withdrawal amount.
+        assertEq(totalAssetsBefore - totalAssetsAfter, withdrawAmount);
+
+        // User should still have collateral remaining.
+        assertGt(vault.getCollateralBalance(user), 0);
+    }
+
+
+
+
 }
