@@ -740,7 +740,7 @@ contract StablecoinVaultTest is Test {
         vault.mintXUSD(60e6);
 
         vm.prank(user);
-        vault.withdraw(60e6);
+        vault.withdraw(30e6);
     }
 
     function test_WithdrawAfterYieldCannotExceedAvailableCollateral() public {
@@ -1262,10 +1262,15 @@ contract StablecoinVaultTest is Test {
         uint256 balanceBefore = mockUSDC.balanceOf(user);
         uint256 sharesBefore = vault.getShareBalance(user);
 
-        vault.withdraw(40e6);
+        vault.withdraw(10e6);
 
-        assertEq(mockUSDC.balanceOf(user), balanceBefore + 40e6);
-        assertEq(vault.getCollateralBalance(user), 60e6);
+        console2.log("collateralBalance", vault.getCollateralBalance(user));
+        console2.log("collateralValue", vault.convertToAssets(vault.getShareBalance(user)));
+        console2.log("xusdMinted", vault.getxusdMinted(user));
+        console2.log("amount", uint256(10e6));
+
+        assertEq(mockUSDC.balanceOf(user), balanceBefore + 10e6);
+        assertEq(vault.getCollateralBalance(user), 90e6);
         assertLt(vault.getShareBalance(user), sharesBefore);
         assertEq(vault.getxusdMinted(user), 60e6);
 
@@ -1338,7 +1343,48 @@ contract StablecoinVaultTest is Test {
         assertGt(vault.getCollateralBalance(user), 0);
     }
 
+    function test_LiquidatePartialDebt3() public {
+        vm.startPrank(user);
 
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(60e6);
+
+        vm.stopPrank();
+
+        // Make the position unhealthy:
+        // 100 collateral -> 63 collateral
+        vm.prank(address(vault));
+        strategy.simulateLoss(37e6);
+
+        assertTrue(vault.isLiquidatable(user));
+
+        // Give liquidator enough USDC to mint 30 xUSD
+        mockUSDC.mint(user2, 100e6);
+
+        vm.startPrank(user2);
+        mockUSDC.approve(address(vault), 100e6);
+        vault.deposit(100e6);
+        vault.mintXUSD(30e6);
+        vm.stopPrank();
+
+        uint256 liquidatorUSDCBefore = mockUSDC.balanceOf(user2);
+
+        vm.prank(user2);
+        vault.liquidate(user, 30e6);
+
+        // User should still have 30 xUSD debt
+        assertEq(vault.getxusdMinted(user), 30e6);
+
+        // 30 xUSD + 5% bonus = 31.5 USDC
+        assertEq(
+            mockUSDC.balanceOf(user2),
+            liquidatorUSDCBefore + 31.5e6
+        );
+
+        // User should still have collateral shares remaining
+        assertGt(vault.getShareBalance(user), 0);
+    }
 
 
 }

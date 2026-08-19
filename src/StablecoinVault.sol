@@ -5,6 +5,7 @@ pragma solidity ^0.8.24;
 import {MockUSDC} from "./MockUSDC.sol";
 import {XUSD} from "./XUSD.sol";
 import {SimpleYieldStrategy} from "./SimpleYieldStrategy.sol";
+import {console2} from "forge-std/console2.sol";
 
 contract StablecoinVault {
     MockUSDC internal mockUSDC;
@@ -89,6 +90,12 @@ contract StablecoinVault {
     function withdraw(uint256 amount) external moreThanZero(amount) {
         uint256 collateralValue = convertToAssets(shareBalance[msg.sender]);
 
+        console2.log("collateralBalance", collateralBalance[msg.sender]);
+        console2.log("collateralValue", collateralValue);
+        console2.log("xusdMinted", xusdMinted[msg.sender]);
+        console2.log("withdrawAmount", amount);
+        console2.log("availableCollateral", collateralValue - xusdMinted[msg.sender]);
+
         if (collateralBalance[msg.sender] == 0) {
             revert SV__NoCollateralDeposited();
         }
@@ -98,8 +105,8 @@ contract StablecoinVault {
         if (xusdMinted[msg.sender] >= collateralValue) {
             revert SV__InsufficientCollateral();
         }
-        uint256 availableCollateral = collateralValue - xusdMinted[msg.sender];
-        if (amount > availableCollateral) {
+        uint256 requiredCollateral = (xusdMinted[msg.sender] * COLLATERALIZATION_RATIO + 99) / 100;
+        if (collateralValue - amount < requiredCollateral) {
             revert SV__InsufficientCollateral();
         }
         uint256 sharesToBurn = (amount * totalShares) / totalAssets();
@@ -120,7 +127,7 @@ contract StablecoinVault {
 
         uint256 maxMintable = (collateralValue * 100) / COLLATERALIZATION_RATIO;
 
-        if (xusdMinted[msg.sender] > maxMintable) {
+        if (xusdMinted[msg.sender] >= maxMintable) {
             revert SV__InsufficientCollateral();
         }
 
@@ -244,6 +251,10 @@ contract StablecoinVault {
 
     function getTotalShares() external view returns (uint256) {
         return totalShares;
+    }
+
+    function getVaultMintedUSDC() external view returns (uint256) {
+        return vaultMintedUSDC;
     }
 
     function totalAssets() public view returns (uint256) {
