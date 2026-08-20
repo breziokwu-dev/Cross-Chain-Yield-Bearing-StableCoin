@@ -5,7 +5,6 @@ pragma solidity ^0.8.24;
 import {MockUSDC} from "./MockUSDC.sol";
 import {XUSD} from "./XUSD.sol";
 import {SimpleYieldStrategy} from "./SimpleYieldStrategy.sol";
-import {console2} from "forge-std/console2.sol";
 
 contract StablecoinVault {
     MockUSDC internal mockUSDC;
@@ -34,7 +33,6 @@ contract StablecoinVault {
     error SV__InsufficientXUSDMinted();
     error SV__PositionHealthy();
     error SV__InsufficientDebt();
-    error SV__InsufficientLiquidationAmount();
 
     event Deposit(address sender, uint256 amount);
     event Withdraw(address sender, uint256 amount);
@@ -73,7 +71,11 @@ contract StablecoinVault {
         if (totalShares == 0) {
             shares = amount;
         } else {
-            shares = (amount * totalShares) / totalAssets();
+            uint256 assets = totalAssets();
+            if (assets == 0) {
+                revert SV__InsufficientCollateral();
+            }
+            shares = (amount * totalShares) / assets;
         }
         bool transferred = mockUSDC.transferFrom(msg.sender, address(this), amount);
         if (!transferred) {
@@ -90,16 +92,10 @@ contract StablecoinVault {
     function withdraw(uint256 amount) external moreThanZero(amount) {
         uint256 collateralValue = convertToAssets(shareBalance[msg.sender]);
 
-        console2.log("collateralBalance", collateralBalance[msg.sender]);
-        console2.log("collateralValue", collateralValue);
-        console2.log("xusdMinted", xusdMinted[msg.sender]);
-        console2.log("withdrawAmount", amount);
-        console2.log("availableCollateral", collateralValue - xusdMinted[msg.sender]);
-
-        if (collateralBalance[msg.sender] == 0) {
+        if (shareBalance[msg.sender] == 0) {
             revert SV__NoCollateralDeposited();
         }
-        if (collateralBalance[msg.sender] < amount) {
+        if (amount > collateralValue) {
             revert SV__InsufficientCollateral();
         }
         if (xusdMinted[msg.sender] >= collateralValue) {
@@ -115,11 +111,13 @@ contract StablecoinVault {
         uint256 sharesToBurn = (amount * totalShares) / totalAssetsBeforeWithdrawal;
 
         strategy.withdraw(amount);
-        bool transfered = mockUSDC.transfer(msg.sender, amount);
-        if (!transfered) {
+        bool transferred = mockUSDC.transfer(msg.sender, amount);
+        if (!transferred) {
             revert SV__TransferNotSuccessful();
         }
-        collateralBalance[msg.sender] -= amount;
+        collateralBalance[msg.sender] = collateralBalance[msg.sender] > amount
+            ? collateralBalance[msg.sender] - amount
+            : 0;
         shareBalance[msg.sender] -= sharesToBurn;
         totalShares -= sharesToBurn;
 
@@ -192,11 +190,12 @@ contract StablecoinVault {
         shareBalance[user] -= sharesToSeize;
         totalShares -= sharesToSeize;
 
-        // collateralBalance tracks deposited principal, while share value also
-        // includes yield. A liquidation may seize more than the remaining
-        // principal when yield exists, so do not allow an accounting underflow.
+        // collateralBalance tracks deposited principal for compatibility with
+        // the public getter. If liquidation consumes more than that principal
+        // because of accrued yield, retain the value represented by remaining
+        // shares so the user can still redeem the residual claim.
         if (collateralToSeize >= collateralBalance[user]) {
-            collateralBalance[user] = 0;
+            collateralBalance[user] = convertToAssets(shareBalance[user]);
         } else {
             collateralBalance[user] -= collateralToSeize;
         }
