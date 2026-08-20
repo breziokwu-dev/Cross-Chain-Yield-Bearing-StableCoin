@@ -7,7 +7,8 @@ import {XUSD} from "./XUSD.sol";
 import {SimpleYieldStrategy} from "./SimpleYieldStrategy.sol";
 
 /// @notice Single-chain v1 vault for mock USDC-backed, yield-bearing xUSD.
-/// @dev xUSD is the vault's share token. Yield changes share value, not supply.
+/// @dev USDC uses 6 decimals while xUSD uses 18. Share pricing normalizes
+///      USDC amounts to 18 decimals before applying the 1e18 exchange rate.
 contract StablecoinVault {
     MockUSDC internal immutable mockUSDC;
     XUSD internal immutable xusd;
@@ -15,6 +16,7 @@ contract StablecoinVault {
     address internal immutable deployer;
 
     uint256 internal constant RATE_SCALE = 1e18;
+    uint256 internal constant ASSET_SCALE = 1e12; // 6-decimal USDC -> 18 decimals
 
     error SV__MustBeMoreThanZero();
     error SV__TransferNotSuccessful();
@@ -48,13 +50,13 @@ contract StablecoinVault {
         _;
     }
 
-    /// @notice Deposits mock USDC and mints xUSD shares at the pre-deposit rate.
+    /// @notice Deposits USDC and mints xUSD shares at the pre-deposit rate.
     function deposit(uint256 assets) external moreThanZero(assets) returns (uint256 shares) {
         uint256 assetsBefore = totalAssets();
         uint256 supply = xusd.totalSupply();
 
-        // With zero supply, the exchange rate is reinitialized to 1e18.
-        shares = supply == 0 ? assets : (assets * supply) / assetsBefore;
+        // The first deposit starts at 1 xUSD per 1 USDC of economic value.
+        shares = supply == 0 ? assets * ASSET_SCALE : (assets * supply) / assetsBefore;
         if (shares == 0) revert SV__InsufficientShares();
 
         bool transferred = mockUSDC.transferFrom(msg.sender, address(this), assets);
@@ -68,7 +70,7 @@ contract StablecoinVault {
         emit Deposit(msg.sender, assets, shares);
     }
 
-    /// @notice Burns xUSD shares and returns their proportional asset value.
+    /// @notice Burns xUSD shares and returns their proportional USDC value.
     /// @dev Redemption rounds the returned asset amount down.
     function redeem(uint256 shares) external moreThanZero(shares) returns (uint256 assets) {
         uint256 supply = xusd.totalSupply();
@@ -80,8 +82,6 @@ contract StablecoinVault {
         assets = (shares * assetsBefore) / supply;
         if (assets == 0) revert SV__InsufficientAssets();
 
-        // V1 has no idle reserve after a normal deposit, so the strategy
-        // supplies the redemption assets.
         xusd.burn(msg.sender, shares);
         strategy.withdraw(assets);
 
@@ -98,10 +98,11 @@ contract StablecoinVault {
     }
 
     /// @notice Current exchange rate, scaled by 1e18.
+    /// @dev Both sides are expressed in 18-decimal economic units.
     function exchangeRate() public view returns (uint256) {
         uint256 supply = xusd.totalSupply();
         if (supply == 0) return RATE_SCALE;
-        return (totalAssets() * RATE_SCALE) / supply;
+        return (totalAssets() * ASSET_SCALE * RATE_SCALE) / supply;
     }
 
     function convertToAssets(uint256 shares) public view returns (uint256) {
@@ -113,12 +114,13 @@ contract StablecoinVault {
     function convertToShares(uint256 assets) public view returns (uint256) {
         uint256 supply = xusd.totalSupply();
         uint256 assets_ = totalAssets();
-        if (supply == 0) return assets;
+        if (supply == 0) return assets * ASSET_SCALE;
         if (assets_ == 0) return 0;
         return (assets * supply) / assets_;
     }
 
     /// @notice Authoritative v1 definition: vault-held collateral + strategy value.
+    /// @dev Returned in the collateral asset's native 6-decimal units.
     function totalAssets() public view returns (uint256) {
         return mockUSDC.balanceOf(address(this)) + strategy.totalValue();
     }
