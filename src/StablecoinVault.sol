@@ -5,6 +5,7 @@ pragma solidity ^0.8.24;
 import {MockUSDC} from "./MockUSDC.sol";
 import {XUSD} from "./XUSD.sol";
 import {SimpleYieldStrategy} from "./SimpleYieldStrategy.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 /// @notice Single-chain v1 vault for mock USDC-backed, yield-bearing xUSD.
 /// @dev USDC uses 6 decimals while xUSD uses 18. Share pricing normalizes
@@ -56,7 +57,9 @@ contract StablecoinVault {
         uint256 supply = xusd.totalSupply();
 
         // The first deposit starts at 1 xUSD per 1 USDC of economic value.
-        shares = supply == 0 ? assets * ASSET_SCALE : (assets * supply) / assetsBefore;
+        shares = supply == 0
+            ? Math.mulDiv(assets, ASSET_SCALE, 1)
+            : Math.mulDiv(assets, supply, assetsBefore);
         if (shares == 0) revert SV__InsufficientShares();
 
         bool transferred = mockUSDC.transferFrom(msg.sender, address(this), assets);
@@ -79,7 +82,7 @@ contract StablecoinVault {
         }
 
         uint256 assetsBefore = totalAssets();
-        assets = (shares * assetsBefore) / supply;
+        assets = Math.mulDiv(shares, assetsBefore, supply);
         if (assets == 0) revert SV__InsufficientAssets();
 
         xusd.burn(msg.sender, shares);
@@ -102,21 +105,21 @@ contract StablecoinVault {
     function exchangeRate() public view returns (uint256) {
         uint256 supply = xusd.totalSupply();
         if (supply == 0) return RATE_SCALE;
-        return (totalAssets() * ASSET_SCALE * RATE_SCALE) / supply;
+        return Math.mulDiv(totalAssets(), ASSET_SCALE * RATE_SCALE, supply);
     }
 
     function convertToAssets(uint256 shares) public view returns (uint256) {
         uint256 supply = xusd.totalSupply();
         if (supply == 0) return 0;
-        return (shares * totalAssets()) / supply;
+        return Math.mulDiv(shares, totalAssets(), supply);
     }
 
     function convertToShares(uint256 assets) public view returns (uint256) {
         uint256 supply = xusd.totalSupply();
         uint256 assets_ = totalAssets();
-        if (supply == 0) return assets * ASSET_SCALE;
+        if (supply == 0) return Math.mulDiv(assets, ASSET_SCALE, 1);
         if (assets_ == 0) return 0;
-        return (assets * supply) / assets_;
+        return Math.mulDiv(assets, supply, assets_);
     }
 
     /// @notice Authoritative v1 definition: vault-held collateral + strategy value.
