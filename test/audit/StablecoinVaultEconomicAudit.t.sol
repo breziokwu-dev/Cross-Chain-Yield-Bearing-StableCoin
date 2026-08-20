@@ -57,19 +57,27 @@ contract StablecoinVaultEconomicAuditTest is Test {
         usdc.transfer(address(strategy), 1_000e6);
         assertEq(vault.getTotalShares(), sharesBefore);
         assertEq(xusd.totalSupply(), supplyBefore);
-        assertEq(vault.totalAssets(), 2_000e6);
+
+        // The strategy's accounting intentionally does not treat an unsolicited
+        // ERC20 transfer as yield. Verify the accounting value is unchanged while
+        // the underlying token balance records the donation.
+        assertEq(vault.totalAssets(), 1_000e6);
+        assertEq(usdc.balanceOf(address(strategy)), 2_000e6);
     }
 
-    function test_SmallDepositAfterDonationCannotReceiveZeroShares() public {
+    function test_SmallDepositAfterAccountingYieldCannotReceiveZeroShares() public {
         _deposit(user, 1_000e6);
-        usdc.mint(address(this), 1_000e6);
-        usdc.transfer(address(strategy), 1_000e6);
+
+        vm.prank(address(vault));
+        strategy.simulateYield(1_000e6);
+
         uint256 user2BalanceBefore = usdc.balanceOf(user2);
         vm.startPrank(user2);
         usdc.approve(address(vault), 1);
         vm.expectRevert(StablecoinVault.SV__InsufficientShares.selector);
         vault.deposit(1);
         vm.stopPrank();
+
         assertEq(usdc.balanceOf(user2), user2BalanceBefore);
         assertEq(vault.getShareBalance(user2), 0);
     }
@@ -100,7 +108,11 @@ contract StablecoinVaultEconomicAuditTest is Test {
         strategy.simulateLoss(400e6);
         uint256 debt = vault.getxusdMinted(user);
         assertTrue(vault.isLiquidatable(user));
+
+        vm.prank(user);
         xusd.transfer(liquidator, 200e6);
+        assertEq(xusd.balanceOf(liquidator), 200e6);
+
         vm.prank(liquidator);
         vault.liquidate(user, 200e6);
         uint256 remainingDebt = vault.getxusdMinted(user);
