@@ -109,7 +109,14 @@ contract StablecoinVault {
         if (collateralValue - amount < requiredCollateral) {
             revert SV__InsufficientCollateral();
         }
-        uint256 sharesToBurn = (amount * totalShares) / totalAssets();
+
+        // Calculate the shares to burn against the pre-withdrawal asset pool.
+        // If this is calculated after strategy.withdraw(), totalAssets() has
+        // already decreased, causing the user to burn too many shares and
+        // breaking proportional share accounting.
+        uint256 totalAssetsBeforeWithdrawal = totalAssets();
+        uint256 sharesToBurn = (amount * totalShares) / totalAssetsBeforeWithdrawal;
+
         strategy.withdraw(amount);
         bool transfered = mockUSDC.transfer(msg.sender, amount);
         if (!transfered) {
@@ -176,24 +183,19 @@ contract StablecoinVault {
             revert SV__InsufficientCollateral();
         }
 
-        // Burn the liquidator's xUSD
         xusd.burn(msg.sender, debtToRepay);
 
-        // Reduce the user's debt
         xusdMinted[user] -= debtToRepay;
         vaultMintedUSDC -= debtToRepay;
 
-        // Withdraw the seized collateral from the strategy
         strategy.withdraw(collateralToSeize);
 
-        // Transfer collateral to liquidator
         bool transferred = mockUSDC.transfer(msg.sender, collateralToSeize);
 
         if (!transferred) {
             revert SV__TransferNotSuccessful();
         }
 
-        // Remove seized shares from the user's position
         shareBalance[user] -= sharesToSeize;
         totalShares -= sharesToSeize;
 
