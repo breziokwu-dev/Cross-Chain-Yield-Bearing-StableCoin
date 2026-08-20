@@ -100,6 +100,7 @@ contract StablecoinVaultEconomicAuditTest is Test {
         strategy.simulateLoss(400e6);
         uint256 debt = vault.getxusdMinted(user);
         assertTrue(vault.isLiquidatable(user));
+        vm.prank(user);
         xusd.transfer(liquidator, 200e6);
         vm.prank(liquidator);
         vault.liquidate(user, 200e6);
