@@ -114,6 +114,7 @@ contract StablecoinVaultEconomicAuditTest is Test {
 
         assertTrue(vault.isLiquidatable(user));
 
+        vm.prank(user);
         xusd.transfer(liquidator, 200e6);
         vm.prank(liquidator);
         vault.liquidate(user, 200e6);
