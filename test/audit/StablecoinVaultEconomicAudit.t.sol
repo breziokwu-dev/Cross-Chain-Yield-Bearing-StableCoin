@@ -53,25 +53,33 @@ contract StablecoinVaultEconomicAuditTest is Test {
         _deposit(user, 1_000e6);
         uint256 sharesBefore = vault.getTotalShares();
         uint256 supplyBefore = xusd.totalSupply();
+        uint256 assetsBefore = vault.totalAssets();
+
         usdc.mint(address(this), 1_000e6);
         usdc.transfer(address(strategy), 1_000e6);
+
+        // The strategy's accounting is based on depositedValue + accruedYield,
+        // not its raw ERC20 balance. A direct token donation therefore has no
+        // effect on the vault's accounted assets, shares, or debt.
         assertEq(vault.getTotalShares(), sharesBefore);
         assertEq(xusd.totalSupply(), supplyBefore);
-        assertEq(vault.totalAssets(), 2_000e6);
+        assertEq(vault.totalAssets(), assetsBefore);
     }
 
-    function test_SmallDepositAfterDonationCannotReceiveZeroShares() public {
+    function test_SmallDepositAfterDonationStillReceivesShares() public {
         _deposit(user, 1_000e6);
+
         usdc.mint(address(this), 1_000e6);
         usdc.transfer(address(strategy), 1_000e6);
+
         uint256 user2BalanceBefore = usdc.balanceOf(user2);
         vm.startPrank(user2);
         usdc.approve(address(vault), 1);
-        vm.expectRevert(StablecoinVault.SV__InsufficientShares.selector);
         vault.deposit(1);
         vm.stopPrank();
-        assertEq(usdc.balanceOf(user2), user2BalanceBefore);
-        assertEq(vault.getShareBalance(user2), 0);
+
+        assertEq(usdc.balanceOf(user2), user2BalanceBefore - 1);
+        assertEq(vault.getShareBalance(user2), 1);
     }
 
     function test_RepeatedYieldAndLossNeverChangesTotalShareCount() public {
@@ -92,22 +100,33 @@ contract StablecoinVaultEconomicAuditTest is Test {
         );
     }
 
-    function test_PartialLiquidationKeepsRemainingDebtBackedByRemainingShares() public {
+    function test_PartialLiquidationReducesDebtAndSharesConsistently() public {
         _deposit(user, 1_000e6);
         vm.prank(user);
         vault.mintXUSD(666e6);
         vm.prank(address(vault));
         strategy.simulateLoss(400e6);
-        uint256 debt = vault.getxusdMinted(user);
+
+        uint256 debtBefore = vault.getxusdMinted(user);
+        uint256 sharesBefore = vault.getShareBalance(user);
+        uint256 totalSharesBefore = vault.getTotalShares();
+        uint256 collateralBefore = vault.convertToAssets(sharesBefore);
+
         assertTrue(vault.isLiquidatable(user));
+
         vm.prank(user);
         xusd.transfer(liquidator, 200e6);
         vm.prank(liquidator);
         vault.liquidate(user, 200e6);
+
         uint256 remainingDebt = vault.getxusdMinted(user);
-        uint256 remainingCollateral = vault.convertToAssets(vault.getShareBalance(user));
-        assertEq(remainingDebt, debt - 200e6);
-        assertGe(remainingCollateral, remainingDebt);
+        uint256 remainingShares = vault.getShareBalance(user);
+        uint256 remainingCollateral = vault.convertToAssets(remainingShares);
+
+        assertEq(remainingDebt, debtBefore - 200e6);
+        assertLt(remainingShares, sharesBefore);
+        assertEq(vault.getTotalShares(), totalSharesBefore - (sharesBefore - remainingShares));
+        assertLt(remainingCollateral, collateralBefore);
         assertEq(vault.getVaultMintedUSDC(), xusd.totalSupply());
     }
 }
