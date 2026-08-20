@@ -82,7 +82,9 @@ contract StablecoinVaultAccountingAuditTest is Test {
         vm.prank(address(vault));
         strategy.simulateLoss(41e6);
 
+        vm.prank(user);
         xusd.transfer(liquidator, 100e6);
+        assertEq(xusd.balanceOf(liquidator), 100e6);
 
         vm.prank(liquidator);
         vault.liquidate(user, 100e6);
