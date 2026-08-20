@@ -110,10 +110,7 @@ contract StablecoinVault {
             revert SV__InsufficientCollateral();
         }
 
-        // Calculate the shares to burn against the pre-withdrawal asset pool.
-        // If this is calculated after strategy.withdraw(), totalAssets() has
-        // already decreased, causing the user to burn too many shares and
-        // breaking proportional share accounting.
+        // Calculate shares against the pre-withdrawal asset pool.
         uint256 totalAssetsBeforeWithdrawal = totalAssets();
         uint256 sharesToBurn = (amount * totalShares) / totalAssetsBeforeWithdrawal;
 
@@ -172,11 +169,8 @@ contract StablecoinVault {
         }
 
         uint256 collateralToSeize = (debtToRepay * (100 + LIQUIDATION_BONUS)) / 100;
-
         uint256 userShares = shareBalance[user];
-
         uint256 userCollateralValue = convertToAssets(userShares);
-
         uint256 sharesToSeize = (collateralToSeize * userShares) / userCollateralValue;
 
         if (sharesToSeize > userShares) {
@@ -191,7 +185,6 @@ contract StablecoinVault {
         strategy.withdraw(collateralToSeize);
 
         bool transferred = mockUSDC.transfer(msg.sender, collateralToSeize);
-
         if (!transferred) {
             revert SV__TransferNotSuccessful();
         }
@@ -199,7 +192,14 @@ contract StablecoinVault {
         shareBalance[user] -= sharesToSeize;
         totalShares -= sharesToSeize;
 
-        collateralBalance[user] -= collateralToSeize;
+        // collateralBalance tracks deposited principal, while share value also
+        // includes yield. A liquidation may seize more than the remaining
+        // principal when yield exists, so do not allow an accounting underflow.
+        if (collateralToSeize >= collateralBalance[user]) {
+            collateralBalance[user] = 0;
+        } else {
+            collateralBalance[user] -= collateralToSeize;
+        }
 
         emit Liquidated(msg.sender, user, debtToRepay, collateralToSeize);
     }
