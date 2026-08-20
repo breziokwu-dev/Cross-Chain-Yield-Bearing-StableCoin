@@ -109,7 +109,11 @@ contract StablecoinVault {
         if (collateralValue - amount < requiredCollateral) {
             revert SV__InsufficientCollateral();
         }
-        uint256 sharesToBurn = (amount * totalShares) / totalAssets();
+
+        // Calculate shares against the pre-withdrawal asset pool.
+        uint256 totalAssetsBeforeWithdrawal = totalAssets();
+        uint256 sharesToBurn = (amount * totalShares) / totalAssetsBeforeWithdrawal;
+
         strategy.withdraw(amount);
         bool transfered = mockUSDC.transfer(msg.sender, amount);
         if (!transfered) {
@@ -165,39 +169,37 @@ contract StablecoinVault {
         }
 
         uint256 collateralToSeize = (debtToRepay * (100 + LIQUIDATION_BONUS)) / 100;
-
         uint256 userShares = shareBalance[user];
-
         uint256 userCollateralValue = convertToAssets(userShares);
-
         uint256 sharesToSeize = (collateralToSeize * userShares) / userCollateralValue;
 
         if (sharesToSeize > userShares) {
             revert SV__InsufficientCollateral();
         }
 
-        // Burn the liquidator's xUSD
         xusd.burn(msg.sender, debtToRepay);
 
-        // Reduce the user's debt
         xusdMinted[user] -= debtToRepay;
         vaultMintedUSDC -= debtToRepay;
 
-        // Withdraw the seized collateral from the strategy
         strategy.withdraw(collateralToSeize);
 
-        // Transfer collateral to liquidator
         bool transferred = mockUSDC.transfer(msg.sender, collateralToSeize);
-
         if (!transferred) {
             revert SV__TransferNotSuccessful();
         }
 
-        // Remove seized shares from the user's position
         shareBalance[user] -= sharesToSeize;
         totalShares -= sharesToSeize;
 
-        collateralBalance[user] -= collateralToSeize;
+        // collateralBalance tracks deposited principal, while share value also
+        // includes yield. A liquidation may seize more than the remaining
+        // principal when yield exists, so do not allow an accounting underflow.
+        if (collateralToSeize >= collateralBalance[user]) {
+            collateralBalance[user] = 0;
+        } else {
+            collateralBalance[user] -= collateralToSeize;
+        }
 
         emit Liquidated(msg.sender, user, debtToRepay, collateralToSeize);
     }
