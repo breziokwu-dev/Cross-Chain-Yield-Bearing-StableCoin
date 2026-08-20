@@ -33,6 +33,7 @@ contract StablecoinVault {
     error SV__InsufficientXUSDMinted();
     error SV__PositionHealthy();
     error SV__InsufficientDebt();
+    error SV__InsufficientShares();
 
     event Deposit(address sender, uint256 amount);
     event Withdraw(address sender, uint256 amount);
@@ -76,6 +77,9 @@ contract StablecoinVault {
                 revert SV__InsufficientCollateral();
             }
             shares = (amount * totalShares) / assets;
+            if (shares == 0) {
+                revert SV__InsufficientShares();
+            }
         }
         bool transferred = mockUSDC.transferFrom(msg.sender, address(this), amount);
         if (!transferred) {
@@ -106,9 +110,16 @@ contract StablecoinVault {
             revert SV__InsufficientCollateral();
         }
 
-        // Calculate shares against the pre-withdrawal asset pool.
         uint256 totalAssetsBeforeWithdrawal = totalAssets();
-        uint256 sharesToBurn = (amount * totalShares) / totalAssetsBeforeWithdrawal;
+        // Withdrawals must round shares up. Rounding down can burn zero shares
+        // for a positive withdrawal when accrued yield makes assets/share > 1,
+        // allowing repeated withdrawals without reducing ownership.
+        uint256 sharesToBurn = (amount * totalShares + totalAssetsBeforeWithdrawal - 1)
+            / totalAssetsBeforeWithdrawal;
+
+        if (sharesToBurn == 0 || sharesToBurn > shareBalance[msg.sender]) {
+            revert SV__InsufficientShares();
+        }
 
         strategy.withdraw(amount);
         bool transferred = mockUSDC.transfer(msg.sender, amount);
@@ -169,7 +180,8 @@ contract StablecoinVault {
         uint256 collateralToSeize = (debtToRepay * (100 + LIQUIDATION_BONUS)) / 100;
         uint256 userShares = shareBalance[user];
         uint256 userCollateralValue = convertToAssets(userShares);
-        uint256 sharesToSeize = (collateralToSeize * userShares) / userCollateralValue;
+        uint256 sharesToSeize = (collateralToSeize * userShares + userCollateralValue - 1)
+            / userCollateralValue;
 
         if (sharesToSeize > userShares) {
             revert SV__InsufficientCollateral();
