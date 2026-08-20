@@ -17,12 +17,13 @@ contract SimpleYieldStrategy {
     error SYS__ZeroAddressVault();
     error SYS__TransferNotSuccessful();
     error SYS__GreaterThanDepositedValue();
+    error SYS__GreaterThanTotalValue();
     error SYS__WithdrawNotSuccessful();
 
     bool internal live;
 
     event Deposit(uint256 amount, uint256 depositedValue);
-    event Withdraw(uint256 amount, uint256 depositedValue);
+    event Withdraw(uint256 amount, uint256 totalValue);
     event YieldSimulated(uint256 amount, uint256 accruedYield);
     event LossSimulated(uint256 amount, uint256 remainingValue);
 
@@ -68,18 +69,28 @@ contract SimpleYieldStrategy {
         if (amount == 0) {
             revert SYS__ZeroAmount();
         }
-        if (amount > depositedValue) {
-            revert SYS__GreaterThanDepositedValue();
+        if (amount > totalValue()) {
+            revert SYS__GreaterThanTotalValue();
         }
         if (!live) {
             revert SYS__NotLive();
         }
+
         bool withdrawn = mockUSDC.transfer(vault, amount);
         if (!withdrawn) {
             revert SYS__WithdrawNotSuccessful();
         }
-        depositedValue -= amount;
-        emit Withdraw(amount, depositedValue);
+
+        // Withdrawals consume accrued yield first, then deposited principal.
+        // This keeps the accounting value equal to the strategy's token balance.
+        if (amount <= accruedYield) {
+            accruedYield -= amount;
+        } else {
+            depositedValue -= amount - accruedYield;
+            accruedYield = 0;
+        }
+
+        emit Withdraw(amount, totalValue());
     }
 
     function simulateYield(uint256 amount) external onlyVault {
@@ -89,6 +100,10 @@ contract SimpleYieldStrategy {
         if (!live) {
             revert SYS__NotLive();
         }
+
+        // The mock yield is represented by actual mock USDC so totalValue()
+        // remains consistent with the strategy's ERC20 balance.
+        mockUSDC.mint(address(this), amount);
         accruedYield += amount;
         emit YieldSimulated(amount, accruedYield);
     }
@@ -97,18 +112,23 @@ contract SimpleYieldStrategy {
         if (amount == 0) {
             revert SYS__ZeroAmount();
         }
-
-        if (amount > depositedValue) {
-            revert SYS__GreaterThanDepositedValue();
+        if (amount > totalValue()) {
+            revert SYS__GreaterThanTotalValue();
         }
-
         if (!live) {
             revert SYS__NotLive();
         }
 
-        depositedValue -= amount;
+        mockUSDC.burn(address(this), amount);
 
-        emit LossSimulated(amount, depositedValue);
+        if (amount <= accruedYield) {
+            accruedYield -= amount;
+        } else {
+            depositedValue -= amount - accruedYield;
+            accruedYield = 0;
+        }
+
+        emit LossSimulated(amount, totalValue());
     }
 
     function getMockUSDCAddress() external view returns (address) {
