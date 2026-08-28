@@ -12,6 +12,7 @@ contract XUSDTest is Test {
     address user = makeAddr("user");
     address vault = makeAddr("vault");
     address attacker = makeAddr("attacker");
+    address bridge = makeAddr("bridge");
 
     uint256 constant MINT_AMOUNT = 1000 ether;
 
@@ -79,7 +80,7 @@ contract XUSDTest is Test {
 
         vm.prank(attacker);
 
-        vm.expectRevert(XUSD.XUSD__OnlyVault.selector);
+        vm.expectRevert(XUSD.XUSD__OnlyVaultOrBridge.selector);
         xusd.mint(user, MINT_AMOUNT);
     }
 
@@ -137,7 +138,7 @@ contract XUSDTest is Test {
 
         vm.prank(attacker);
 
-        vm.expectRevert(XUSD.XUSD__OnlyVault.selector);
+        vm.expectRevert(XUSD.XUSD__OnlyVaultOrBridge.selector);
         xusd.burn(user, 100 ether);
     }
 
@@ -223,5 +224,77 @@ contract XUSDTest is Test {
     function _mintToUser(uint256 amount) internal {
         vm.prank(vault);
         xusd.mint(user, amount);
+    }
+
+    // ---------------------------------------------------------------
+    // Bridge Authorization
+    // ---------------------------------------------------------------
+
+    function test_AuthorizeBridge_DeployerCanAuthorize() public {
+        vm.prank(deployer);
+        xusd.authorizeBridge(bridge);
+
+        assertTrue(xusd.authorizedBridges(bridge));
+    }
+
+    function test_AuthorizeBridge_RevertsIfNotDeployer() public {
+        vm.prank(attacker);
+
+        vm.expectRevert(XUSD.XUSD__OnlyDeployer.selector);
+        xusd.authorizeBridge(bridge);
+    }
+
+    function test_AuthorizeBridge_RevertsIfZeroAddress() public {
+        vm.prank(deployer);
+
+        vm.expectRevert(XUSD.XUSD__ZeroAddressBridge.selector);
+        xusd.authorizeBridge(address(0));
+    }
+
+    function test_AuthorizedBridgeCanMint() public {
+        vm.prank(deployer);
+        xusd.authorizeBridge(bridge);
+
+        vm.prank(bridge);
+        xusd.mint(user, MINT_AMOUNT);
+
+        assertEq(xusd.balanceOf(user), MINT_AMOUNT);
+        assertEq(xusd.totalSupply(), MINT_AMOUNT);
+    }
+
+    function test_AuthorizedBridgeCanBurn() public {
+        _setVault();
+        _mintToUser(MINT_AMOUNT);
+
+        vm.prank(deployer);
+        xusd.authorizeBridge(bridge);
+
+        vm.prank(bridge);
+        xusd.burn(user, 400 ether);
+
+        assertEq(xusd.balanceOf(user), 600 ether);
+        assertEq(xusd.totalSupply(), 600 ether);
+    }
+
+    function test_RevokeBridge_PreventsMintAndBurn() public {
+        _setVault();
+        _mintToUser(MINT_AMOUNT);
+
+        vm.startPrank(deployer);
+        xusd.authorizeBridge(bridge);
+        xusd.revokeBridge(bridge);
+        vm.stopPrank();
+
+        assertFalse(xusd.authorizedBridges(bridge));
+
+        vm.startPrank(bridge);
+
+        vm.expectRevert(XUSD.XUSD__OnlyVaultOrBridge.selector);
+        xusd.mint(user, 100 ether);
+
+        vm.expectRevert(XUSD.XUSD__OnlyVaultOrBridge.selector);
+        xusd.burn(user, 100 ether);
+
+        vm.stopPrank();
     }
 }
