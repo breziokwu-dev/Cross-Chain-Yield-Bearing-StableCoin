@@ -45,7 +45,6 @@ contract StablecoinVaultTest is Test {
         StablecoinVault newVault = new StablecoinVault(address(mockUSDC), address(xusd));
 
         vm.expectRevert(StablecoinVault.SV__ZeroAddressStrategy.selector);
-
         newVault.setStrategy(address(0));
     }
 
@@ -53,7 +52,6 @@ contract StablecoinVaultTest is Test {
         SimpleYieldStrategy anotherStrategy = new SimpleYieldStrategy(address(mockUSDC), address(vault));
 
         vm.expectRevert(StablecoinVault.SV__StrategyAlreadySet.selector);
-
         vault.setStrategy(address(anotherStrategy));
     }
 
@@ -61,9 +59,7 @@ contract StablecoinVaultTest is Test {
         address attacker = makeAddr("attacker");
 
         vm.prank(attacker);
-
         vm.expectRevert(StablecoinVault.SV__OnlyDeployer.selector);
-
         vault.setStrategy(address(strategy));
     }
 
@@ -96,11 +92,9 @@ contract StablecoinVaultTest is Test {
 
     function test_Deposit_RevertsIfInsufficientAllowance() public {
         vm.startPrank(user);
-
         mockUSDC.approve(address(vault), 100e6);
 
         vm.expectRevert();
-
         vault.deposit(200e6);
 
         vm.stopPrank();
@@ -109,7 +103,6 @@ contract StablecoinVaultTest is Test {
     function test_Deposit_UserCollateralUpdates() public {
         vm.startPrank(user);
         mockUSDC.approve(address(vault), 100e6);
-
         vault.deposit(100e6);
         vm.stopPrank();
         assertEq(vault.getCollateralBalance(user), 100e6);
@@ -117,12 +110,9 @@ contract StablecoinVaultTest is Test {
 
     function test_Deposit_MultipleDepositsAccumulate() public {
         vm.startPrank(user);
-
         mockUSDC.approve(address(vault), 300e6);
-
         vault.deposit(100e6);
         vault.deposit(200e6);
-
         vm.stopPrank();
 
         assertEq(vault.totalAssets(), 300e6);
@@ -132,8 +122,6 @@ contract StablecoinVaultTest is Test {
     }
 
     function test_Deposit_MultipleDepositsAccumulateFromMultipleUsers() public {
-        address user2 = makeAddr("user2");
-
         vm.startPrank(user);
         mockUSDC.approve(address(vault), 100e6);
         vault.deposit(100e6);
@@ -212,11 +200,9 @@ contract StablecoinVaultTest is Test {
     function test_Withdraw_MultipleWithdrawalsAccumulate() public {
         vm.startPrank(user);
         mockUSDC.approve(address(vault), 300e6);
-
         vault.deposit(300e6);
         vault.withdraw(100e6);
         vault.withdraw(50e6);
-
         vm.stopPrank();
 
         assertEq(vault.totalAssets(), 150e6);
@@ -226,8 +212,6 @@ contract StablecoinVaultTest is Test {
     }
 
     function test_Withdraw_MultipleWithdrawalsAccumulateFromMultipleUsers() public {
-        address user2 = makeAddr("user2");
-
         vm.startPrank(user);
         mockUSDC.approve(address(vault), 100e6);
         vault.deposit(100e6);
@@ -270,8 +254,6 @@ contract StablecoinVaultTest is Test {
     }
 
     function test_Yield_IsSharedProportionallyBetweenUsers() public {
-        mockUSDC.mint(user2, 1000e6);
-
         vm.startPrank(user);
         mockUSDC.approve(address(vault), 100e6);
         vault.deposit(100e6);
@@ -281,6 +263,7 @@ contract StablecoinVaultTest is Test {
         strategy.simulateYield(20e6);
 
         vm.startPrank(user2);
+        mockUSDC.mint(user2, 1000e6);
         mockUSDC.approve(address(vault), 60e6);
         vault.deposit(60e6);
         vm.stopPrank();
@@ -288,9 +271,8 @@ contract StablecoinVaultTest is Test {
         uint256 userShares = vault.getShareBalance(user);
         uint256 user2Shares = vault.getShareBalance(user2);
 
-        assertEq(vault.totalShares(), userShares + user2Shares);
+        assertEq(vault.getTotalShares(), userShares + user2Shares);
         assertEq(vault.totalAssets(), 180e6);
-
         assertEq(vault.convertToAssets(userShares), 120e6);
         assertEq(vault.convertToAssets(user2Shares), 60e6);
     }
