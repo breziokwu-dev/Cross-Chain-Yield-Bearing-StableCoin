@@ -375,6 +375,7 @@ contract CrossChainBridgeTest is Test {
         address recipient = makeAddr("recipient");
         uint256 amount = 400 ether;
         uint256 initialAmount = 1000 ether;
+        uint256 fee = router.MOCK_FEE();
 
         vm.prank(address(bridge));
         xusd.mint(user, initialAmount);
@@ -393,7 +394,7 @@ contract CrossChainBridgeTest is Test {
         uint256 supplyBefore = xusd.totalSupply();
 
         vm.prank(user);
-        bytes32 messageId = bridge.sendXUSD{value: router.MOCK_FEE()}(
+        bytes32 messageId = bridge.sendXUSD{value: fee}(
             DESTINATION_CHAIN_SELECTOR,
             recipient,
             amount
