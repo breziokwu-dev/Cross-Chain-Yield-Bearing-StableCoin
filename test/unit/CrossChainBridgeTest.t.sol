@@ -24,11 +24,8 @@ contract CrossChainBridgeTest is Test {
         vm.startPrank(deployer);
 
         xusd = new XUSD();
-
         router = new MockCCIPRouter();
-
         bridge = new CrossChainBridge(address(router), address(xusd));
-
         destinationBridge = new CrossChainBridge(address(router), address(xusd));
 
         xusd.authorizeBridge(address(bridge));
@@ -53,37 +50,27 @@ contract CrossChainBridgeTest is Test {
 
     function test_SetTrustedRemote_DeployerCanSet() public {
         vm.prank(deployer);
-
         bridge.setTrustedRemote(SOURCE_CHAIN_SELECTOR, remoteBridge);
-
         assertEq(bridge.trustedRemote(SOURCE_CHAIN_SELECTOR), remoteBridge);
     }
 
     function test_SetTrustedRemote_RevertsIfNotDeployer() public {
         vm.prank(attacker);
-
         vm.expectRevert(CrossChainBridge.CrossChainBridge__OnlyDeployer.selector);
-
         bridge.setTrustedRemote(SOURCE_CHAIN_SELECTOR, remoteBridge);
     }
 
     function test_SetTrustedRemote_RevertsIfZeroAddress() public {
         vm.prank(deployer);
-
         vm.expectRevert(CrossChainBridge.CrossChainBridge__ZeroAddressRemote.selector);
-
         bridge.setTrustedRemote(SOURCE_CHAIN_SELECTOR, address(0));
     }
 
     function test_SetTrustedRemote_RevertsIfAlreadySet() public {
         vm.startPrank(deployer);
-
         bridge.setTrustedRemote(SOURCE_CHAIN_SELECTOR, remoteBridge);
-
         vm.expectRevert(CrossChainBridge.CrossChainBridge__RemoteAlreadySet.selector);
-
         bridge.setTrustedRemote(SOURCE_CHAIN_SELECTOR, makeAddr("anotherBridge"));
-
         vm.stopPrank();
     }
 
@@ -106,7 +93,6 @@ contract CrossChainBridgeTest is Test {
         bridge.sendXUSD{value: router.MOCK_FEE()}(SOURCE_CHAIN_SELECTOR, makeAddr("recipient"), amount);
 
         assertEq(xusd.balanceOf(address(this)), balanceBefore - amount);
-
         assertEq(xusd.totalSupply(), supplyBefore - amount);
     }
 
@@ -124,14 +110,13 @@ contract CrossChainBridgeTest is Test {
         bridge.sendXUSD{value: router.MOCK_FEE()}(SOURCE_CHAIN_SELECTOR, recipient, amount);
 
         assertEq(router.lastDestinationChainSelector(), SOURCE_CHAIN_SELECTOR);
-
         assertEq(abi.decode(router.lastReceiver(), (address)), destinationBridgeAddress);
 
-        (address encodedRecipient, uint256 encodedAmount) = abi.decode(router.lastData(), (address, uint256));
+        (address encodedRecipient, uint256 encodedAmount) =
+            abi.decode(router.lastData(), (address, uint256));
 
         assertEq(encodedRecipient, recipient);
         assertEq(encodedAmount, amount);
-
         assertEq(router.lastTokenAmountCount(), 0);
         assertEq(router.lastFeeToken(), address(0));
     }
@@ -176,7 +161,6 @@ contract CrossChainBridgeTest is Test {
         });
 
         vm.expectRevert(CrossChainBridge.CrossChainBridge__UntrustedSourceChain.selector);
-
         router.deliverMessage(address(bridge), message);
 
         assertEq(xusd.balanceOf(recipient), 0);
@@ -200,7 +184,6 @@ contract CrossChainBridgeTest is Test {
         });
 
         vm.expectRevert(CrossChainBridge.CrossChainBridge__UntrustedSourceBridge.selector);
-
         router.deliverMessage(address(bridge), message);
 
         assertEq(xusd.balanceOf(recipient), 0);
@@ -235,7 +218,6 @@ contract CrossChainBridgeTest is Test {
         assertTrue(bridge.processedMessages(messageId));
 
         vm.expectRevert(CrossChainBridge.CrossChainBridge__MessageAlreadyProcessed.selector);
-
         router.deliverMessage(address(bridge), message);
 
         assertEq(xusd.balanceOf(recipient), amount);
@@ -260,7 +242,6 @@ contract CrossChainBridgeTest is Test {
         });
 
         vm.expectRevert(CrossChainBridge.CrossChainBridge__UntrustedSourceBridge.selector);
-
         router.deliverMessage(address(bridge), message);
 
         assertFalse(bridge.processedMessages(messageId));
@@ -286,15 +267,17 @@ contract CrossChainBridgeTest is Test {
         vm.stopPrank();
 
         uint256 supplyBefore = xusd.totalSupply();
+        uint256 userBalanceBefore = xusd.balanceOf(user);
 
-        vm.prank(user);
-        bytes32 messageId = bridge.sendXUSD{value: router.MOCK_FEE()}(
+        vm.startPrank(user);
+        bytes32 messageId = bridge.sendXUSD{value: fee}(
             DESTINATION_CHAIN_SELECTOR,
             recipient,
             amount
         );
+        vm.stopPrank();
 
-        assertEq(xusd.balanceOf(user), initialAmount - amount);
+        assertEq(xusd.balanceOf(user), userBalanceBefore - amount);
         assertEq(xusd.balanceOf(recipient), 0);
         assertEq(xusd.totalSupply(), supplyBefore - amount);
 
@@ -308,7 +291,7 @@ contract CrossChainBridgeTest is Test {
 
         router.deliverMessage(address(destinationBridge), message);
 
-        assertEq(xusd.balanceOf(user), initialAmount - amount);
+        assertEq(xusd.balanceOf(user), userBalanceBefore - amount);
         assertEq(xusd.balanceOf(recipient), amount);
         assertEq(xusd.totalSupply(), supplyBefore);
     }
