@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {CrossChainBridge} from "../../src/CrossChainBridge.sol";
 import {XUSD} from "../../src/XUSD.sol";
 import {MockCCIPRouter} from "../../src/MockCCIPRouter.sol";
+import {Client} from "@chainlink/contracts/src/v0.8/ccip/libraries/Client.sol";
 
 contract CrossChainBridgeTest is Test {
     CrossChainBridge bridge;
@@ -181,5 +182,170 @@ contract CrossChainBridgeTest is Test {
 
         assertEq(router.lastTokenAmountCount(), 0);
         assertEq(router.lastFeeToken(), address(0));
+    }
+
+    function test_ReceiveXUSD_ValidMessageMints() public {
+        address sourceBridge = makeAddr("sourceBridge");
+        address recipient = makeAddr("recipient");
+        uint256 amount = 400 ether;
+
+        vm.prank(deployer);
+        bridge.setTrustedRemote(
+            SOURCE_CHAIN_SELECTOR,
+            sourceBridge
+        );
+
+        Client.Any2EVMMessage memory message = Client.Any2EVMMessage({
+            messageId: keccak256("message-1"),
+            sourceChainSelector: SOURCE_CHAIN_SELECTOR,
+            sender: abi.encode(sourceBridge),
+            data: abi.encode(recipient, amount),
+            destTokenAmounts: new Client.EVMTokenAmount[](0)
+        });
+
+        router.deliverMessage(
+            address(bridge),
+            message
+        );
+
+        assertEq(xusd.balanceOf(recipient), amount);
+        assertEq(xusd.totalSupply(), amount);
+    }
+
+    function test_ReceiveXUSD_RevertsForUntrustedSourceChain() public {
+        uint64 untrustedChainSelector = 999999;
+        address sourceBridge = makeAddr("sourceBridge");
+        address recipient = makeAddr("recipient");
+
+        Client.Any2EVMMessage memory message = Client.Any2EVMMessage({
+            messageId: keccak256("untrusted-chain"),
+            sourceChainSelector: untrustedChainSelector,
+            sender: abi.encode(sourceBridge),
+            data: abi.encode(recipient, 100 ether),
+            destTokenAmounts: new Client.EVMTokenAmount[](0)
+        });
+
+        vm.expectRevert(
+            CrossChainBridge.CrossChainBridge__UntrustedSourceChain.selector
+        );
+
+        router.deliverMessage(
+            address(bridge),
+            message
+        );
+
+        assertEq(xusd.balanceOf(recipient), 0);
+        assertEq(xusd.totalSupply(), 0);
+    }
+
+    function test_ReceiveXUSD_RevertsForUntrustedSourceBridge() public {
+        address trustedSourceBridge = makeAddr("trustedSourceBridge");
+        address forgedSourceBridge = makeAddr("forgedSourceBridge");
+        address recipient = makeAddr("recipient");
+
+        vm.prank(deployer);
+        bridge.setTrustedRemote(
+            SOURCE_CHAIN_SELECTOR,
+            trustedSourceBridge
+        );
+
+        Client.Any2EVMMessage memory message = Client.Any2EVMMessage({
+            messageId: keccak256("forged-source"),
+            sourceChainSelector: SOURCE_CHAIN_SELECTOR,
+            sender: abi.encode(forgedSourceBridge),
+            data: abi.encode(recipient, 100 ether),
+            destTokenAmounts: new Client.EVMTokenAmount[](0)
+        });
+
+        vm.expectRevert(
+            CrossChainBridge.CrossChainBridge__UntrustedSourceBridge.selector
+        );
+
+        router.deliverMessage(
+            address(bridge),
+            message
+        );
+
+        assertEq(xusd.balanceOf(recipient), 0);
+        assertEq(xusd.totalSupply(), 0);
+    }
+
+    function test_ReceiveXUSD_RevertsIfMessageAlreadyProcessed() public {
+        address sourceBridge = makeAddr("sourceBridge");
+        address recipient = makeAddr("recipient");
+        uint256 amount = 100 ether;
+
+        vm.prank(deployer);
+        bridge.setTrustedRemote(
+            SOURCE_CHAIN_SELECTOR,
+            sourceBridge
+        );
+
+        bytes32 messageId = keccak256("replay-message");
+
+        Client.Any2EVMMessage memory message = Client.Any2EVMMessage({
+            messageId: messageId,
+            sourceChainSelector: SOURCE_CHAIN_SELECTOR,
+            sender: abi.encode(sourceBridge),
+            data: abi.encode(recipient, amount),
+            destTokenAmounts: new Client.EVMTokenAmount[](0)
+        });
+
+        // First delivery succeeds.
+        router.deliverMessage(
+            address(bridge),
+            message
+        );
+
+        assertEq(xusd.balanceOf(recipient), amount);
+        assertTrue(bridge.processedMessages(messageId));
+
+        // Second delivery must fail.
+        vm.expectRevert(
+            CrossChainBridge.CrossChainBridge__MessageAlreadyProcessed.selector
+        );
+
+        router.deliverMessage(
+            address(bridge),
+            message
+        );
+
+        // Balance must not increase.
+        assertEq(xusd.balanceOf(recipient), amount);
+    }
+
+    function test_ReceiveXUSD_FailedMessageIsNotMarkedProcessed() public {
+        address sourceBridge = makeAddr("sourceBridge");
+        address forgedBridge = makeAddr("forgedBridge");
+        address recipient = makeAddr("recipient");
+
+        vm.prank(deployer);
+        bridge.setTrustedRemote(
+            SOURCE_CHAIN_SELECTOR,
+            sourceBridge
+        );
+
+        bytes32 messageId = keccak256("failed-message");
+
+        Client.Any2EVMMessage memory message = Client.Any2EVMMessage({
+            messageId: messageId,
+            sourceChainSelector: SOURCE_CHAIN_SELECTOR,
+            sender: abi.encode(forgedBridge),
+            data: abi.encode(recipient, 100 ether),
+            destTokenAmounts: new Client.EVMTokenAmount[](0)
+        });
+
+        vm.expectRevert(
+            CrossChainBridge.CrossChainBridge__UntrustedSourceBridge.selector
+        );
+
+        router.deliverMessage(
+            address(bridge),
+            message
+        );
+
+        assertFalse(
+            bridge.processedMessages(messageId)
+        );
     }
 }

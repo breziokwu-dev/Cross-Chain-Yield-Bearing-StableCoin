@@ -11,6 +11,7 @@ contract CrossChainBridge is CCIPReceiver {
     address public immutable deployer;
 
     mapping(uint64 => address) public trustedRemote;
+    mapping(bytes32 => bool) public processedMessages;
 
     error CrossChainBridge__OnlyDeployer();
     error CrossChainBridge__ZeroAddressRemote();
@@ -21,6 +22,7 @@ contract CrossChainBridge is CCIPReceiver {
     error CrossChainBridge__InsufficientFee();
     error CrossChainBridge__UntrustedSourceChain();
     error CrossChainBridge__UntrustedSourceBridge();
+    error CrossChainBridge__MessageAlreadyProcessed();
     
     constructor(address router, address _xusd) CCIPReceiver(router) {
         xusd = XUSD(_xusd);
@@ -49,13 +51,19 @@ contract CrossChainBridge is CCIPReceiver {
     function _ccipReceive(
         Client.Any2EVMMessage memory message
     ) internal override {
-        address trustedBridge = trustedRemote[message.sourceChainSelector];
+        if (processedMessages[message.messageId]) {
+            revert CrossChainBridge__MessageAlreadyProcessed();
+        }
+
+        address trustedBridge =
+            trustedRemote[message.sourceChainSelector];
 
         if (trustedBridge == address(0)) {
             revert CrossChainBridge__UntrustedSourceChain();
         }
 
-        address sourceBridge = abi.decode(message.sender, (address));
+        address sourceBridge =
+            abi.decode(message.sender, (address));
 
         if (sourceBridge != trustedBridge) {
             revert CrossChainBridge__UntrustedSourceBridge();
@@ -63,6 +71,8 @@ contract CrossChainBridge is CCIPReceiver {
 
         (address recipient, uint256 amount) =
             abi.decode(message.data, (address, uint256));
+
+        processedMessages[message.messageId] = true;
 
         xusd.mint(recipient, amount);
     }

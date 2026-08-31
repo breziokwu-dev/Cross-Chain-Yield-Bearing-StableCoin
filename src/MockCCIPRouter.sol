@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {IRouterClient} from "@chainlink/contracts/src/v0.8/ccip/interfaces/IRouterClient.sol";
 import {Client} from "@chainlink/contracts/src/v0.8/ccip/libraries/Client.sol";
+import {CCIPReceiver} from "@chainlink/contracts/src/v0.8/ccip/applications/CCIPReceiver.sol";
 
 contract MockCCIPRouter is IRouterClient {
     uint256 public constant MOCK_FEE = 0.01 ether;
@@ -59,5 +60,12 @@ contract MockCCIPRouter is IRouterClient {
 
     function setSupported(bool _supported) external {
         supported = _supported;
+    }
+
+    function deliverMessage(
+        address receiver,
+        Client.Any2EVMMessage memory message
+    ) external {
+        CCIPReceiver(receiver).ccipReceive(message);
     }
 }
