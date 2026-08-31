@@ -18,33 +18,23 @@ contract MockCCIPRouter is IRouterClient {
 
     bool public supported = true;
 
-    function isChainSupported(
-        uint64
-    ) external view override returns (bool) {
+    function isChainSupported(uint64) external view override returns (bool) {
         return supported;
     }
 
-    function getFee(
-        uint64,
-        Client.EVM2AnyMessage memory
-    ) external pure override returns (uint256) {
+    function getFee(uint64, Client.EVM2AnyMessage memory) external pure override returns (uint256) {
         return MOCK_FEE;
     }
 
-    function ccipSend(
-        uint64 destinationChainSelector,
-        Client.EVM2AnyMessage calldata message
-    ) external payable override returns (bytes32) {
+    function ccipSend(uint64 destinationChainSelector, Client.EVM2AnyMessage calldata message)
+        external
+        payable
+        override
+        returns (bytes32)
+    {
         require(msg.value >= MOCK_FEE, "Insufficient fee");
 
-        lastMessageId = keccak256(
-            abi.encode(
-                block.chainid,
-                destinationChainSelector,
-                message.receiver,
-                message.data
-            )
-        );
+        lastMessageId = keccak256(abi.encode(block.chainid, destinationChainSelector, message.receiver, message.data));
 
         lastDestinationChainSelector = destinationChainSelector;
 
@@ -62,10 +52,7 @@ contract MockCCIPRouter is IRouterClient {
         supported = _supported;
     }
 
-    function deliverMessage(
-        address receiver,
-        Client.Any2EVMMessage memory message
-    ) external {
+    function deliverMessage(address receiver, Client.Any2EVMMessage memory message) external {
         CCIPReceiver(receiver).ccipReceive(message);
     }
 }

@@ -114,8 +114,7 @@ contract StablecoinVault {
         // Withdrawals must round shares up. Rounding down can burn zero shares
         // for a positive withdrawal when accrued yield makes assets/share > 1,
         // allowing repeated withdrawals without reducing ownership.
-        uint256 sharesToBurn = (amount * totalShares + totalAssetsBeforeWithdrawal - 1)
-            / totalAssetsBeforeWithdrawal;
+        uint256 sharesToBurn = (amount * totalShares + totalAssetsBeforeWithdrawal - 1) / totalAssetsBeforeWithdrawal;
 
         if (sharesToBurn == 0 || sharesToBurn > shareBalance[msg.sender]) {
             revert SV__InsufficientShares();
@@ -126,9 +125,8 @@ contract StablecoinVault {
         if (!transferred) {
             revert SV__TransferNotSuccessful();
         }
-        collateralBalance[msg.sender] = collateralBalance[msg.sender] > amount
-            ? collateralBalance[msg.sender] - amount
-            : 0;
+        collateralBalance[msg.sender] =
+            collateralBalance[msg.sender] > amount ? collateralBalance[msg.sender] - amount : 0;
         shareBalance[msg.sender] -= sharesToBurn;
         totalShares -= sharesToBurn;
 
@@ -180,8 +178,7 @@ contract StablecoinVault {
         uint256 collateralToSeize = (debtToRepay * (100 + LIQUIDATION_BONUS)) / 100;
         uint256 userShares = shareBalance[user];
         uint256 userCollateralValue = convertToAssets(userShares);
-        uint256 sharesToSeize = (collateralToSeize * userShares + userCollateralValue - 1)
-            / userCollateralValue;
+        uint256 sharesToSeize = (collateralToSeize * userShares + userCollateralValue - 1) / userCollateralValue;
 
         if (sharesToSeize > userShares) {
             revert SV__InsufficientCollateral();

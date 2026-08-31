@@ -1,4 +1,3 @@
-
 // SPDX-License-Identifier: MIT
 
 pragma solidity ^0.8.24;
@@ -18,12 +17,7 @@ contract StablecoinVaultHandler is Test {
 
     address[] public users;
 
-    constructor(
-        StablecoinVault _vault,
-        MockUSDC _mockUSDC,
-        XUSD _xusd,
-        SimpleYieldStrategy _strategy
-    ) {
+    constructor(StablecoinVault _vault, MockUSDC _mockUSDC, XUSD _xusd, SimpleYieldStrategy _strategy) {
         vault = _vault;
         mockUSDC = _mockUSDC;
         xusd = _xusd;
@@ -55,9 +49,7 @@ contract StablecoinVaultHandler is Test {
     function mintXUSD(uint256 userSeed, uint256 amount) external {
         address user = users[userSeed % users.length];
 
-        uint256 collateralValue = vault.convertToAssets(
-            vault.getShareBalance(user)
-        );
+        uint256 collateralValue = vault.convertToAssets(vault.getShareBalance(user));
 
         uint256 maxMintable = (collateralValue * 100) / 150;
         uint256 currentDebt = vault.getxusdMinted(user);
@@ -113,12 +105,8 @@ contract StablecoinVaultHandler is Test {
         vault.withdraw(amount);
     }
 
-
     function usersLength() external view returns (uint256) {
         return users.length;
     }
-
-
-
 }
 

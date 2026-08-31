@@ -23,37 +23,22 @@ contract StablecoinVaultInvariantTest is StdInvariant, Test {
     function setUp() public {
         mockUSDC = new MockUSDC();
         xusd = new XUSD();
-        vault = new StablecoinVault(
-            address(mockUSDC),
-            address(xusd)
-        );
-        strategy = new SimpleYieldStrategy(
-            address(mockUSDC),
-            address(vault)
-        );
+        vault = new StablecoinVault(address(mockUSDC), address(xusd));
+        strategy = new SimpleYieldStrategy(address(mockUSDC), address(vault));
 
         vault.setStrategy(address(strategy));
         xusd.setVault(address(vault));
 
         mockUSDC.mint(user, 1_000e6);
 
-        handler = new StablecoinVaultHandler(
-            vault,
-            mockUSDC,
-            xusd,
-            strategy
-        );
+        handler = new StablecoinVaultHandler(vault, mockUSDC, xusd, strategy);
 
         targetContract(address(handler));
     }
 
     function invariant_SharesNeverExceedTotalShares() public view {
-        assertLe(
-            vault.getShareBalance(user),
-            vault.getTotalShares()
-        );
+        assertLe(vault.getShareBalance(user), vault.getTotalShares());
     }
-
 
     function invariant_TotalSharesEqualSumOfUserShares() public view {
         uint256 totalUserShares;
@@ -63,10 +48,7 @@ contract StablecoinVaultInvariantTest is StdInvariant, Test {
         }
 
         assertEq(totalUserShares, vault.getTotalShares());
-
-
     }
-
 
     function invariant_DebtAccountingIsConsistent() public view {
         uint256 totalUserDebt;
@@ -83,13 +65,11 @@ contract StablecoinVaultInvariantTest is StdInvariant, Test {
         for (uint256 i = 0; i < handler.usersLength(); i++) {
             address user = handler.users(i);
 
-            uint256 collateralValue =
-                vault.convertToAssets(vault.getShareBalance(user));
+            uint256 collateralValue = vault.convertToAssets(vault.getShareBalance(user));
 
             uint256 debt = vault.getxusdMinted(user);
 
-            uint256 maxDebt =
-                (collateralValue * 100) / 150;
+            uint256 maxDebt = (collateralValue * 100) / 150;
 
             assertLe(debt, maxDebt);
         }
@@ -114,12 +94,6 @@ contract StablecoinVaultInvariantTest is StdInvariant, Test {
     }
 
     function invariant_TotalAssetsMatchStrategyValue() public view {
-        assertEq(
-            vault.totalAssets(),
-            strategy.totalValue()
-        );
+        assertEq(vault.totalAssets(), strategy.totalValue());
     }
-
-
-
 }

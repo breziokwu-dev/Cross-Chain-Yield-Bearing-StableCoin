@@ -23,7 +23,7 @@ contract CrossChainBridge is CCIPReceiver {
     error CrossChainBridge__UntrustedSourceChain();
     error CrossChainBridge__UntrustedSourceBridge();
     error CrossChainBridge__MessageAlreadyProcessed();
-    
+
     constructor(address router, address _xusd) CCIPReceiver(router) {
         xusd = XUSD(_xusd);
         deployer = msg.sender;
@@ -48,36 +48,35 @@ contract CrossChainBridge is CCIPReceiver {
         trustedRemote[sourceChainSelector] = remoteBridge;
     }
 
-    function _ccipReceive(
-        Client.Any2EVMMessage memory message
-    ) internal override {
+    function _ccipReceive(Client.Any2EVMMessage memory message) internal override {
         if (processedMessages[message.messageId]) {
             revert CrossChainBridge__MessageAlreadyProcessed();
         }
 
-        address trustedBridge =
-            trustedRemote[message.sourceChainSelector];
+        address trustedBridge = trustedRemote[message.sourceChainSelector];
 
         if (trustedBridge == address(0)) {
             revert CrossChainBridge__UntrustedSourceChain();
         }
 
-        address sourceBridge =
-            abi.decode(message.sender, (address));
+        address sourceBridge = abi.decode(message.sender, (address));
 
         if (sourceBridge != trustedBridge) {
             revert CrossChainBridge__UntrustedSourceBridge();
         }
 
-        (address recipient, uint256 amount) =
-            abi.decode(message.data, (address, uint256));
+        (address recipient, uint256 amount) = abi.decode(message.data, (address, uint256));
 
         processedMessages[message.messageId] = true;
 
         xusd.mint(recipient, amount);
     }
 
-    function sendXUSD(uint64 destinationChainSelector, address recipient, uint256 amount) external payable returns (bytes32 messageId) {
+    function sendXUSD(uint64 destinationChainSelector, address recipient, uint256 amount)
+        external
+        payable
+        returns (bytes32 messageId)
+    {
         if (amount == 0) {
             revert CrossChainBridge__ZeroAmount();
         }
@@ -98,33 +97,23 @@ contract CrossChainBridge is CCIPReceiver {
         xusd.burn(msg.sender, amount);
 
         Client.EVM2AnyMessage memory message = Client.EVM2AnyMessage({
-            receiver: abi.encode(
-                trustedRemote[destinationChainSelector]
-            ),
+            receiver: abi.encode(trustedRemote[destinationChainSelector]),
             data: abi.encode(recipient, amount),
             tokenAmounts: new Client.EVMTokenAmount[](0),
             feeToken: address(0),
             extraArgs: ""
         });
 
-        uint256 fee = IRouterClient(i_ccipRouter).getFee(
-            destinationChainSelector,
-            message
-        );
+        uint256 fee = IRouterClient(i_ccipRouter).getFee(destinationChainSelector, message);
 
         if (msg.value < fee) {
             revert CrossChainBridge__InsufficientFee();
         }
 
-        messageId = IRouterClient(i_ccipRouter).ccipSend{value: fee}(
-            destinationChainSelector,
-            message
-        );
+        messageId = IRouterClient(i_ccipRouter).ccipSend{value: fee}(destinationChainSelector, message);
 
         if (msg.value > fee) {
-            (bool success, ) = payable(msg.sender).call{
-                value: msg.value - fee
-            }("");
+            (bool success,) = payable(msg.sender).call{value: msg.value - fee}("");
 
             require(success, "Refund failed");
         }

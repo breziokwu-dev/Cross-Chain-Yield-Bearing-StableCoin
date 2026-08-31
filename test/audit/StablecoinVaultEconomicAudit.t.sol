@@ -94,8 +94,7 @@ contract StablecoinVaultEconomicAuditTest is Test {
         vm.stopPrank();
         assertEq(vault.getTotalShares(), sharesBefore);
         assertEq(
-            vault.convertToAssets(vault.getShareBalance(user))
-                + vault.convertToAssets(vault.getShareBalance(user2)),
+            vault.convertToAssets(vault.getShareBalance(user)) + vault.convertToAssets(vault.getShareBalance(user2)),
             vault.totalAssets()
         );
     }

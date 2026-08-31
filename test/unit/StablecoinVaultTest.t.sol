@@ -1331,10 +1331,7 @@ contract StablecoinVaultTest is Test {
         assertLt(userSharesAfter, userSharesBefore);
 
         // Total shares must decrease by the same amount.
-        assertEq(
-            totalSharesBefore - totalSharesAfter,
-            userSharesBefore - userSharesAfter
-        );
+        assertEq(totalSharesBefore - totalSharesAfter, userSharesBefore - userSharesAfter);
 
         // Assets must decrease by the withdrawal amount.
         assertEq(totalAssetsBefore - totalAssetsAfter, withdrawAmount);
@@ -1377,14 +1374,9 @@ contract StablecoinVaultTest is Test {
         assertEq(vault.getxusdMinted(user), 30e6);
 
         // 30 xUSD + 5% bonus = 31.5 USDC
-        assertEq(
-            mockUSDC.balanceOf(user2),
-            liquidatorUSDCBefore + 31.5e6
-        );
+        assertEq(mockUSDC.balanceOf(user2), liquidatorUSDCBefore + 31.5e6);
 
         // User should still have collateral shares remaining
         assertGt(vault.getShareBalance(user), 0);
     }
-
-
 }
