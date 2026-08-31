@@ -34,19 +34,11 @@ contract CrossChainBridgeTest is Test {
         vm.stopPrank();
     }
 
-    // ---------------------------------------------------------------
-    // Initial State
-    // ---------------------------------------------------------------
-
     function test_InitialState() public view {
         assertEq(address(bridge.xusd()), address(xusd));
         assertEq(bridge.deployer(), deployer);
         assertEq(bridge.trustedRemote(SOURCE_CHAIN_SELECTOR), address(0));
     }
-
-    // ---------------------------------------------------------------
-    // setTrustedRemote()
-    // ---------------------------------------------------------------
 
     function test_SetTrustedRemote_DeployerCanSet() public {
         vm.prank(deployer);
@@ -73,10 +65,6 @@ contract CrossChainBridgeTest is Test {
         bridge.setTrustedRemote(SOURCE_CHAIN_SELECTOR, makeAddr("anotherBridge"));
         vm.stopPrank();
     }
-
-    // ---------------------------------------------------------------
-    // sendXUSD()
-    // ---------------------------------------------------------------
 
     function test_SendXUSD_BurnsCorrectAmount() public {
         uint256 amount = 400 ether;
@@ -120,10 +108,6 @@ contract CrossChainBridgeTest is Test {
         assertEq(router.lastTokenAmountCount(), 0);
         assertEq(router.lastFeeToken(), address(0));
     }
-
-    // ---------------------------------------------------------------
-    // _ccipReceive()
-    // ---------------------------------------------------------------
 
     function test_ReceiveXUSD_ValidMessageMints() public {
         address sourceBridge = makeAddr("sourceBridge");
@@ -190,10 +174,6 @@ contract CrossChainBridgeTest is Test {
         assertEq(xusd.totalSupply(), 0);
     }
 
-    // ---------------------------------------------------------------
-    // Replay protection
-    // ---------------------------------------------------------------
-
     function test_ReceiveXUSD_RevertsIfMessageAlreadyProcessed() public {
         address sourceBridge = makeAddr("sourceBridge");
         address recipient = makeAddr("recipient");
@@ -257,6 +237,8 @@ contract CrossChainBridgeTest is Test {
         uint256 amount = 400 ether;
         uint256 initialAmount = 1000 ether;
         uint256 fee = router.MOCK_FEE();
+
+        vm.deal(user, fee);
 
         vm.prank(address(bridge));
         xusd.mint(user, initialAmount);
