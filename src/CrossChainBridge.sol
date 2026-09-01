@@ -15,16 +15,22 @@ contract CrossChainBridge is CCIPReceiver {
 
     error CrossChainBridge__OnlyDeployer();
     error CrossChainBridge__ZeroAddressRemote();
+    error CrossChainBridge__ZeroAddressXUSD();
     error CrossChainBridge__RemoteAlreadySet();
     error CrossChainBridge__ZeroAmount();
     error CrossChainBridge__ZeroAddressRecipient();
     error CrossChainBridge__UnsupportedDestinationChain();
     error CrossChainBridge__InsufficientFee();
+    error CrossChainBridge__RefundFailed();
     error CrossChainBridge__UntrustedSourceChain();
     error CrossChainBridge__UntrustedSourceBridge();
     error CrossChainBridge__MessageAlreadyProcessed();
 
     constructor(address router, address _xusd) CCIPReceiver(router) {
+        if (_xusd == address(0)) {
+            revert CrossChainBridge__ZeroAddressXUSD();
+        }
+
         xusd = XUSD(_xusd);
         deployer = msg.sender;
     }
@@ -93,7 +99,7 @@ contract CrossChainBridge is CCIPReceiver {
             revert CrossChainBridge__UnsupportedDestinationChain();
         }
 
-        // Burn xUSD on the source chain.
+        // Burn xUSD on the source chain before sending the CCIP message.
         xusd.burn(msg.sender, amount);
 
         Client.EVM2AnyMessage memory message = Client.EVM2AnyMessage({
@@ -115,7 +121,9 @@ contract CrossChainBridge is CCIPReceiver {
         if (msg.value > fee) {
             (bool success,) = payable(msg.sender).call{value: msg.value - fee}("");
 
-            require(success, "Refund failed");
+            if (!success) {
+                revert CrossChainBridge__RefundFailed();
+            }
         }
     }
 }
