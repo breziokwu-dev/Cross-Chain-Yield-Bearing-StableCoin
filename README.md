@@ -1,66 +1,142 @@
-## Foundry
+# Cross-Chain Yield-Bearing Stablecoin
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+A Solidity/Foundry project implementing an overcollateralized, yield-bearing stablecoin with a cross-chain transfer layer built around Chainlink CCIP.
 
-Foundry consists of:
+## Overview
 
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+The system is built around four core components:
 
-## Documentation
+- **XUSD** — ERC20 stablecoin with restricted minting and burning.
+- **StablecoinVault** — accepts mock USDC collateral, tracks shares and XUSD debt, and accounts for collateral deployed to the yield strategy.
+- **SimpleYieldStrategy** — deterministic mock strategy used to simulate yield and losses during testing.
+- **CrossChainBridge** — burns XUSD on the source chain and mints the corresponding amount on the destination chain through Chainlink CCIP, with trusted-remote validation and replay protection.
 
-https://book.getfoundry.sh/
+`MockCCIPRouter` and `MockUSDC` are test-only infrastructure used to exercise the system locally without relying on live infrastructure.
 
-## Usage
+## Architecture
 
-### Build
-
-```shell
-$ forge build
+```text
+                 ┌────────────────────┐
+                 │      User          │
+                 └─────────┬──────────┘
+                           │ deposit USDC
+                           ▼
+                 ┌────────────────────┐
+                 │  StablecoinVault   │
+                 └──────┬───────┬─────┘
+                        │       │
+                 collateral    │ mint/burn XUSD
+                        │       ▼
+                        │  ┌──────────┐
+                        │  │   XUSD   │
+                        │  └────┬─────┘
+                        │       │
+                        ▼       │ cross-chain transfer
+              ┌────────────────┐│
+              │ Yield Strategy ││
+              └────────────────┘│
+                                ▼
+                       ┌──────────────────┐
+                       │ CrossChainBridge │
+                       └────────┬─────────┘
+                                │
+                          Chainlink CCIP
+                                │
+                                ▼
+                       Destination Bridge
+                                │
+                                ▼
+                           Destination XUSD
 ```
 
-### Test
+## Vault Accounting
 
-```shell
-$ forge test
+The vault uses share accounting rather than assigning a fixed number of assets to each deposit.
+
+- `totalAssets` = assets held by the vault + assets reported by the strategy.
+- Deposits receive shares based on the current asset/share exchange rate.
+- Yield increases the value represented by existing shares without creating additional shares.
+- Losses reduce the value represented by existing shares without changing total share supply.
+- XUSD debt is tracked against the user's vault position.
+- When total XUSD supply is zero, the exchange rate is reinitialized to `1e18`.
+
+The design intentionally deploys deposited collateral to the strategy rather than maintaining an idle reserve.
+
+## Cross-Chain Design
+
+The bridge follows a burn-and-mint model:
+
+1. A user initiates a transfer on the source chain.
+2. The bridge burns the specified amount of XUSD from the sender.
+3. A CCIP message is sent to the trusted destination bridge.
+4. The destination bridge validates the router, source chain, source bridge, and replay status.
+5. The destination bridge mints the same amount of XUSD to the recipient.
+
+Trusted remote configuration is explicit, and processed CCIP message IDs are recorded to prevent replay.
+
+## Security / Audit Coverage
+
+Security is treated as a project-quality concern rather than the project's primary specialization. The repository includes tests covering:
+
+- XUSD access control and supply behavior.
+- Vault debt and collateral accounting.
+- Share accounting through deposits, yield, losses, and liquidation.
+- Donation/rounding edge cases.
+- Cross-chain trusted-source validation.
+- CCIP message replay protection.
+- End-to-end source burn → CCIP delivery → destination mint supply conservation.
+- Stateful invariant testing of vault accounting.
+
+## Testing
+
+Run the complete test suite with:
+
+```bash
+forge test -vv
 ```
 
-### Format
+The current suite includes unit, invariant, and economic audit tests.
 
-```shell
-$ forge fmt
+Useful targeted commands:
+
+```bash
+forge test --match-contract StablecoinVaultTest -vv
+forge test --match-contract StablecoinVaultEconomicAuditTest -vv
+forge test --match-contract CrossChainBridgeTest -vv
 ```
 
-### Gas Snapshots
+## Project Status
 
-```shell
-$ forge snapshot
+The core vault, yield strategy, XUSD token, and CCIP bridge are implemented and covered by the current Foundry test suite.
+
+Latest local full-suite verification:
+
+```text
+106 tests passed
+0 failed
+0 skipped
 ```
 
-### Anvil
+## Scope and Limitations
 
-```shell
-$ anvil
-```
+This is an educational/portfolio protocol implementation, not production-ready stablecoin infrastructure.
 
-### Deploy
+Notable limitations include:
 
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
+- `MockUSDC` is intentionally unrestricted and exists only for testing.
+- `SimpleYieldStrategy` is a deterministic mock strategy, not a production yield protocol.
+- CCIP integration is tested with a mock router rather than live deployment infrastructure.
+- No governance system is included.
+- No upgradeability is included.
+- Production deployment would require substantially more economic, integration, operational, and security review.
 
-### Cast
+## Tooling
 
-```shell
-$ cast <subcommand>
-```
+- Solidity
+- Foundry / Forge
+- OpenZeppelin Contracts
+- Chainlink CCIP
 
-### Help
+## Repository
 
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+urlGitHub repositoryhttps://github.com/breziokwu-dev/Cross-Chain-Yield-Bearing-StableCoin
